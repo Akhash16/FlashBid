@@ -16,30 +16,16 @@ import { format } from "date-fns"
 import { CalendarIcon, ImagePlus, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import dynamic from 'next/dynamic'
+import { createClient } from "@/utils/supabase/client"
 
-// Import the client component dynamically
-const CreateAuctionForm = dynamic(() => import('./create-form'), { ssr: false })
-
-export default async function CreateAuctionPageWrapper() {
-  const supabase = await createClient()
-  
-  // Check if user is authenticated
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) {
-    // Redirect to sign in if not authenticated
-    redirect('/auth/signin')
-  }
-  
-  return <CreateAuctionForm userId={user.id} />
+interface CreateAuctionFormProps {
+  userId: string
 }
 
-function CreateAuctionPage({ userId }: { userId: string }) {
+export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
   const { toast } = useToast()
   const router = useRouter()
+  const supabase = createClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [images, setImages] = useState<string[]>([])
   const [endDate, setEndDate] = useState<Date>()
@@ -58,7 +44,7 @@ function CreateAuctionPage({ userId }: { userId: string }) {
   const [shippingLocations, setShippingLocations] = useState("")
 
   const handleImageUpload = () => {
-    // In a real app, you would handle file uploads
+    // In a real app, you would handle file uploads to Supabase Storage
     // For demo purposes, we'll just add placeholder images
     setImages([...images, `/placeholder.svg?height=400&width=600&text=Image ${images.length + 1}`])
   }
@@ -92,31 +78,28 @@ function CreateAuctionPage({ userId }: { userId: string }) {
         endTime: endTime.toISOString(),
         images,
         shippingCost: shippingCost ? parseFloat(shippingCost) : 0,
-        shippingLocations: shippingLocations || "domestic"
+        shippingLocations: shippingLocations || "domestic",
+        user_id: userId // Store the user ID of the creator
       };
 
-      const response = await fetch('/api/auctions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(auctionData),
-      });
+      // Insert the auction into Supabase
+      const { data, error } = await supabase
+        .from('auctions')
+        .insert(auctionData)
+        .select()
+        .single();
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create auction');
+      if (error) {
+        throw new Error(error.message || 'Failed to create auction');
       }
 
-      const data = await response.json();
-      
       toast({
         title: "Auction created!",
         description: "Your auction has been created and is now live.",
       });
       
-      // Redirect to the auction page or auctions list
-      router.push(`/auctions/${data.auction.id}`);
+      // Redirect to the auction page
+      router.push(`/auctions/${data.id}`);
     } catch (error) {
       console.error("Error creating auction:", error);
       toast({
@@ -331,6 +314,7 @@ function CreateAuctionPage({ userId }: { userId: string }) {
                         size="icon"
                         className="absolute top-2 right-2 h-6 w-6"
                         onClick={() => setImages(images.filter((_, index) => index !== i))}
+                        type="button"
                       >
                         ✕
                       </Button>
@@ -410,4 +394,4 @@ function CreateAuctionPage({ userId }: { userId: string }) {
       </div>
     </div>
   )
-}
+} 

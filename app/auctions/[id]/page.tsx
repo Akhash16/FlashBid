@@ -11,8 +11,42 @@ import { useToast } from "@/components/ui/use-toast"
 import { useParams } from "next/navigation"
 import { Clock, DollarSign, Eye, Heart, Share2, ShieldCheck } from "lucide-react"
 
-// Mock auction data
-const mockAuction = {
+// Define auction type
+interface Bid {
+  id: string;
+  user: string;
+  amount: number;
+  time: string;
+}
+
+interface Seller {
+  id: string;
+  name: string;
+  rating: number;
+  totalSales?: number;
+}
+
+interface Auction {
+  id: string;
+  title: string;
+  description: string;
+  seller: Seller;
+  startingPrice: number;
+  currentBid: number;
+  bidCount: number;
+  endTime: Date;
+  images: string[];
+  watchers: number;
+  category: string;
+  condition: string;
+  bids: Bid[];
+  createdAt?: Date;
+  shippingCost?: number;
+  shippingLocations?: string;
+}
+
+// Mock auction data as fallback
+const mockAuction: Auction = {
   id: "1",
   title: "Vintage Watch Collection",
   description: "A collection of rare vintage watches from the 1950s. Includes 5 watches in excellent condition.",
@@ -46,11 +80,80 @@ const mockAuction = {
 export default function AuctionPage() {
   const { id } = useParams()
   const { toast } = useToast()
-  const [auction, setAuction] = useState(mockAuction)
+  const [auction, setAuction] = useState<Auction>(mockAuction)
+  const [loading, setLoading] = useState(true)
   const [bidAmount, setBidAmount] = useState(auction.currentBid + 50)
   const [timeLeft, setTimeLeft] = useState("")
   const [isConnected, setIsConnected] = useState(false)
   const [mainImage, setMainImage] = useState(auction.images[0])
+
+  // Fetch auction data
+  useEffect(() => {
+    const fetchAuction = async () => {
+      try {
+        setLoading(true);
+        
+        // Check if this is a newly created auction from the auctions array
+        const response = await fetch(`/api/auctions?id=${id}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch auction');
+        }
+        
+        const data = await response.json();
+        
+        // Find the specific auction in the returned array
+        const fetchedAuction = data.auctions.find((a: any) => a.id === id);
+        
+        if (fetchedAuction) {
+          // Format the data properly
+          const formattedAuction: Auction = {
+            ...fetchedAuction,
+            // Ensure endTime is a Date object
+            endTime: new Date(fetchedAuction.endTime),
+            // Add default properties if they don't exist
+            images: fetchedAuction.images || ["/placeholder.svg?height=400&width=600"],
+            watchers: fetchedAuction.watchers || Math.floor(Math.random() * 30) + 5,
+            bids: fetchedAuction.bids || [],
+            seller: fetchedAuction.seller || {
+              id: "current-user",
+              name: "Current User",
+              rating: 5.0,
+              totalSales: 1
+            }
+          };
+          
+          setAuction(formattedAuction);
+          
+          // Also update the main image and bid amount
+          if (formattedAuction.images && formattedAuction.images.length > 0) {
+            setMainImage(formattedAuction.images[0]);
+          }
+          
+          setBidAmount(formattedAuction.currentBid + 50);
+        } else {
+          // If auction not found, stay with mock data
+          toast({
+            title: "Auction not found",
+            description: "Using sample auction data instead.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching auction:", error);
+        toast({
+          title: "Error",
+          description: "Could not load auction data. Using sample data instead.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchAuction();
+    }
+  }, [id, toast]);
 
   // Calculate time left
   useEffect(() => {
@@ -148,6 +251,17 @@ export default function AuctionPage() {
     setBidAmount(bidAmount + 50)
   }
 
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8 flex justify-center items-center h-[50vh]">
+        <div className="text-center">
+          <Clock className="h-10 w-10 mx-auto mb-2 animate-pulse" />
+          <p>Loading auction details...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -185,11 +299,12 @@ export default function AuctionPage() {
                 <div>
                   <CardTitle className="text-2xl">{auction.title}</CardTitle>
                   <CardDescription>
-                    <Badge variant="outline" className="mr-2">
-                      {auction.category}
-                    </Badge>
-                    <Badge variant="outline">{auction.condition}</Badge>
+                    {auction.category} • {auction.condition}
                   </CardDescription>
+                  <div className="flex gap-2 mt-1">
+                    <Badge variant="outline">{auction.category}</Badge>
+                    <Badge variant="outline">{auction.condition}</Badge>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="ghost" size="icon">
@@ -211,7 +326,7 @@ export default function AuctionPage() {
                   <div>
                     <p className="text-sm font-medium">{auction.seller.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      ⭐ {auction.seller.rating} • {auction.seller.totalSales} sales
+                      ⭐ {auction.seller.rating} • {auction.seller.totalSales || 0} sales
                     </p>
                   </div>
                 </div>
@@ -278,20 +393,24 @@ export default function AuctionPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {auction.bids.map((bid) => (
-                    <li key={bid.id} className="flex justify-between items-center text-sm">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback>{bid.user.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <span>{bid.user}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-medium">${bid.amount.toLocaleString()}</span>
-                        <span className="text-xs text-muted-foreground">{bid.time}</span>
-                      </div>
-                    </li>
-                  ))}
+                  {auction.bids && auction.bids.length > 0 ? (
+                    auction.bids.map((bid) => (
+                      <li key={bid.id} className="flex justify-between items-center text-sm">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback>{bid.user.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <span>{bid.user}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-medium">${bid.amount.toLocaleString()}</span>
+                          <span className="text-xs text-muted-foreground">{bid.time}</span>
+                        </div>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-center text-sm text-muted-foreground">No bids yet</li>
+                  )}
                 </ul>
               </CardContent>
             </Card>
@@ -322,28 +441,49 @@ export default function AuctionPage() {
           </TabsContent>
           <TabsContent value="shipping" className="p-4">
             <h3 className="text-lg font-medium mb-2">Shipping Information</h3>
-            <p>This item ships worldwide. Shipping costs are calculated at checkout.</p>
+            <p>
+              {auction.shippingCost && auction.shippingCost > 0 
+                ? `Shipping cost: $${auction.shippingCost.toLocaleString()}` 
+                : 'Free shipping'}
+            </p>
+            <p className="mt-2">
+              Ships to: {auction.shippingLocations || 'Domestic only'}
+            </p>
             <p className="mt-2">Estimated delivery: 3-5 business days after payment.</p>
           </TabsContent>
           <TabsContent value="seller" className="p-4">
-            <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center gap-3 mb-4">
               <Avatar className="h-12 w-12">
                 <AvatarImage src="/placeholder.svg" />
                 <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
               </Avatar>
               <div>
                 <h3 className="text-lg font-medium">{auction.seller.name}</h3>
-                <p className="text-sm text-muted-foreground">Member since January 2020</p>
-                <div className="flex items-center gap-1 mt-1">
-                  <span>⭐ {auction.seller.rating}</span>
-                  <span className="text-sm text-muted-foreground">({auction.seller.totalSales} reviews)</span>
-                </div>
+                <p className="text-sm text-muted-foreground">
+                  Member since {new Date(auction.createdAt || Date.now() - 10000000).toLocaleDateString()}
+                </p>
               </div>
             </div>
-            <p>
-              Professional collector specializing in vintage watches and jewelry. All items come with authenticity
-              certificates.
-            </p>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center p-3 border rounded-lg">
+                <p className="text-2xl font-bold">⭐</p>
+                <p className="text-sm font-medium">{auction.seller.rating}/5</p>
+                <p className="text-xs text-muted-foreground">Rating</p>
+              </div>
+              <div className="text-center p-3 border rounded-lg">
+                <p className="text-2xl font-bold">{auction.seller.totalSales || 1}</p>
+                <p className="text-sm font-medium">Sales</p>
+                <p className="text-xs text-muted-foreground">Completed</p>
+              </div>
+              <div className="text-center p-3 border rounded-lg">
+                <p className="text-2xl font-bold">100%</p>
+                <p className="text-sm font-medium">Positive</p>
+                <p className="text-xs text-muted-foreground">Feedback</p>
+              </div>
+            </div>
+            <Button variant="outline" className="w-full">
+              View All Items by This Seller
+            </Button>
           </TabsContent>
         </Tabs>
       </div>

@@ -29,6 +29,13 @@ export async function GET(request: Request) {
   const category = searchParams.get("category")
   const minPrice = searchParams.get("minPrice")
   const maxPrice = searchParams.get("maxPrice")
+  const id = searchParams.get("id")
+
+  // If ID is provided, return the specific auction
+  if (id) {
+    // First check in-memory array
+    return NextResponse.json({ auctions: auctions.filter(auction => auction.id === id || auction.id.toString() === id) });
+  }
 
   // Filter auctions based on query parameters
   let filteredAuctions = [...auctions]
@@ -85,6 +92,9 @@ export async function POST(request: Request) {
       category: body.category,
       condition: body.condition,
       createdAt: new Date(),
+      images: body.images || [],
+      shippingCost: body.shippingCost || 0,
+      shippingLocations: body.shippingLocations || "domestic"
     }
 
     // In a real app, you would save to a database
