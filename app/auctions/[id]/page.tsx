@@ -1,0 +1,352 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useToast } from "@/components/ui/use-toast"
+import { useParams } from "next/navigation"
+import { Clock, DollarSign, Eye, Heart, Share2, ShieldCheck } from "lucide-react"
+
+// Mock auction data
+const mockAuction = {
+  id: "1",
+  title: "Vintage Watch Collection",
+  description: "A collection of rare vintage watches from the 1950s. Includes 5 watches in excellent condition.",
+  seller: {
+    id: "seller1",
+    name: "John Collector",
+    rating: 4.8,
+    totalSales: 124,
+  },
+  startingPrice: 1000,
+  currentBid: 1250,
+  bidCount: 8,
+  endTime: new Date(Date.now() + 10000000), // ~3 hours from now
+  images: [
+    "/placeholder.svg?height=400&width=600",
+    "/placeholder.svg?height=400&width=600",
+    "/placeholder.svg?height=400&width=600",
+  ],
+  watchers: 24,
+  category: "Collectibles",
+  condition: "Excellent",
+  bids: [
+    { id: "bid1", user: "Alice", amount: 1250, time: "2 minutes ago" },
+    { id: "bid2", user: "Bob", amount: 1200, time: "15 minutes ago" },
+    { id: "bid3", user: "Charlie", amount: 1150, time: "32 minutes ago" },
+    { id: "bid4", user: "David", amount: 1100, time: "1 hour ago" },
+    { id: "bid5", user: "Eve", amount: 1050, time: "2 hours ago" },
+  ],
+}
+
+export default function AuctionPage() {
+  const { id } = useParams()
+  const { toast } = useToast()
+  const [auction, setAuction] = useState(mockAuction)
+  const [bidAmount, setBidAmount] = useState(auction.currentBid + 50)
+  const [timeLeft, setTimeLeft] = useState("")
+  const [isConnected, setIsConnected] = useState(false)
+  const [mainImage, setMainImage] = useState(auction.images[0])
+
+  // Calculate time left
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date()
+      const diff = auction.endTime.getTime() - now.getTime()
+
+      if (diff <= 0) {
+        setTimeLeft("Auction ended")
+        clearInterval(interval)
+        return
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60))
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+      setTimeLeft(`${hours}h ${minutes}m ${seconds}s`)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [auction.endTime])
+
+  // Connect to WebSocket
+  useEffect(() => {
+    // In a real app, you would connect to your WebSocket server
+    // const socket = io(process.env.NEXT_PUBLIC_WEBSOCKET_URL)
+
+    // Simulate connection
+    const timeout = setTimeout(() => {
+      setIsConnected(true)
+      toast({
+        title: "Connected to auction",
+        description: "You'll receive real-time updates for this auction.",
+      })
+    }, 1000)
+
+    // Simulate receiving a new bid
+    const bidInterval = setInterval(() => {
+      if (Math.random() > 0.7) {
+        const newBid = auction.currentBid + Math.floor(Math.random() * 50) + 10
+        setAuction((prev) => ({
+          ...prev,
+          currentBid: newBid,
+          bidCount: prev.bidCount + 1,
+          bids: [
+            {
+              id: `bid${Date.now()}`,
+              user: ["Alex", "Taylor", "Jordan", "Morgan"][Math.floor(Math.random() * 4)],
+              amount: newBid,
+              time: "just now",
+            },
+            ...prev.bids.slice(0, 4),
+          ],
+        }))
+
+        toast({
+          title: "New bid received!",
+          description: `Someone just bid $${newBid.toLocaleString()}`,
+        })
+      }
+    }, 15000)
+
+    return () => {
+      clearTimeout(timeout)
+      clearInterval(bidInterval)
+      // socket.disconnect()
+    }
+  }, [])
+
+  const handleBid = () => {
+    if (bidAmount <= auction.currentBid) {
+      toast({
+        title: "Bid too low",
+        description: `Your bid must be higher than the current bid of $${auction.currentBid.toLocaleString()}`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    // In a real app, you would send this to your server
+    setAuction((prev) => ({
+      ...prev,
+      currentBid: bidAmount,
+      bidCount: prev.bidCount + 1,
+      bids: [{ id: `bid${Date.now()}`, user: "You", amount: bidAmount, time: "just now" }, ...prev.bids.slice(0, 4)],
+    }))
+
+    toast({
+      title: "Bid placed!",
+      description: `You are now the highest bidder at $${bidAmount.toLocaleString()}`,
+    })
+
+    // Increase bid amount for next bid
+    setBidAmount(bidAmount + 50)
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left column - Images */}
+        <div className="lg:col-span-2">
+          <div className="rounded-lg overflow-hidden bg-gray-100 mb-4">
+            <img
+              src={mainImage || "/placeholder.svg"}
+              alt={auction.title}
+              className="w-full h-auto object-contain aspect-video"
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {auction.images.map((img, i) => (
+              <div
+                key={i}
+                className={`rounded-md overflow-hidden cursor-pointer border-2 ${mainImage === img ? "border-primary" : "border-transparent"}`}
+                onClick={() => setMainImage(img)}
+              >
+                <img
+                  src={img || "/placeholder.svg"}
+                  alt={`${auction.title} ${i + 1}`}
+                  className="w-full h-auto aspect-video object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right column - Auction details */}
+        <div>
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-2xl">{auction.title}</CardTitle>
+                  <CardDescription>
+                    <Badge variant="outline" className="mr-2">
+                      {auction.category}
+                    </Badge>
+                    <Badge variant="outline">{auction.condition}</Badge>
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="icon">
+                    <Heart className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon">
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src="/placeholder.svg" />
+                    <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-sm font-medium">{auction.seller.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      ⭐ {auction.seller.rating} • {auction.seller.totalSales} sales
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm">
+                  View Profile
+                </Button>
+              </div>
+
+              <div className="border rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-green-600" />
+                    <span className="text-sm font-medium">Current Bid</span>
+                  </div>
+                  <span className="text-xl font-bold">${auction.currentBid.toLocaleString()}</span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-orange-500" />
+                    <span className="text-sm font-medium">Time Left</span>
+                  </div>
+                  <span className="text-lg font-semibold">{timeLeft}</span>
+                </div>
+
+                <div className="flex justify-between items-center text-sm text-muted-foreground">
+                  <span>{auction.bidCount} bids</span>
+                  <div className="flex items-center gap-1">
+                    <Eye className="h-4 w-4" />
+                    <span>{auction.watchers} watching</span>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <div className="flex gap-2 mb-2">
+                    <Input
+                      type="number"
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(Number(e.target.value))}
+                      min={auction.currentBid + 1}
+                      className="text-right"
+                    />
+                    <Button onClick={handleBid} className="whitespace-nowrap">
+                      Place Bid
+                    </Button>
+                  </div>
+                  <p className="text-xs text-center text-muted-foreground">
+                    Enter ${(auction.currentBid + 1).toLocaleString()} or more
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-2">
+                  <ShieldCheck className="h-4 w-4 text-green-600" />
+                  <span>Secure payment via Stripe. Buyer protection included.</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="mt-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Recent Bids</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {auction.bids.map((bid) => (
+                    <li key={bid.id} className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback>{bid.user.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <span>{bid.user}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="font-medium">${bid.amount.toLocaleString()}</span>
+                        <span className="text-xs text-muted-foreground">{bid.time}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <Tabs defaultValue="details">
+          <TabsList>
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="shipping">Shipping</TabsTrigger>
+            <TabsTrigger value="seller">Seller Info</TabsTrigger>
+          </TabsList>
+          <TabsContent value="details" className="p-4">
+            <h3 className="text-lg font-medium mb-2">Description</h3>
+            <p>{auction.description}</p>
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <div>
+                <h4 className="font-medium">Condition</h4>
+                <p>{auction.condition}</p>
+              </div>
+              <div>
+                <h4 className="font-medium">Category</h4>
+                <p>{auction.category}</p>
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="shipping" className="p-4">
+            <h3 className="text-lg font-medium mb-2">Shipping Information</h3>
+            <p>This item ships worldwide. Shipping costs are calculated at checkout.</p>
+            <p className="mt-2">Estimated delivery: 3-5 business days after payment.</p>
+          </TabsContent>
+          <TabsContent value="seller" className="p-4">
+            <div className="flex items-center gap-4 mb-4">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src="/placeholder.svg" />
+                <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <h3 className="text-lg font-medium">{auction.seller.name}</h3>
+                <p className="text-sm text-muted-foreground">Member since January 2020</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <span>⭐ {auction.seller.rating}</span>
+                  <span className="text-sm text-muted-foreground">({auction.seller.totalSales} reviews)</span>
+                </div>
+              </div>
+            </div>
+            <p>
+              Professional collector specializing in vintage watches and jewelry. All items come with authenticity
+              certificates.
+            </p>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  )
+}
