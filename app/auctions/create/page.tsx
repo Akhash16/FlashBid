@@ -1,8 +1,6 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -16,33 +14,17 @@ import { format } from "date-fns"
 import { CalendarIcon, ImagePlus, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import dynamic from 'next/dynamic'
+import { createClient } from '@/utils/supabase/client'
 
-// Import the client component dynamically
-const CreateAuctionForm = dynamic(() => import('./create-form'), { ssr: false })
-
-export default async function CreateAuctionPageWrapper() {
-  const supabase = await createClient()
-  
-  // Check if user is authenticated
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) {
-    // Redirect to sign in if not authenticated
-    redirect('/auth/signin')
-  }
-  
-  return <CreateAuctionForm userId={user.id} />
-}
-
-function CreateAuctionPage({ userId }: { userId: string }) {
+export default function CreateAuctionPage() {
   const { toast } = useToast()
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [images, setImages] = useState<string[]>([])
   const [endDate, setEndDate] = useState<Date>()
+  const [userId, setUserId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const supabase = createClient()
   
   // Form data states
   const [title, setTitle] = useState("")
@@ -56,6 +38,41 @@ function CreateAuctionPage({ userId }: { userId: string }) {
   const [duration, setDuration] = useState("")
   const [shippingCost, setShippingCost] = useState("")
   const [shippingLocations, setShippingLocations] = useState("")
+
+  // Check if user is authenticated on client-side
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/auth/signin')
+          return
+        }
+        setUserId(user.id)
+      } catch (error) {
+        console.error("Auth error:", error)
+        router.push('/auth/signin')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    checkAuth()
+  }, [router, supabase.auth])
+  
+  // If still loading or no userId, show loading state
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-12 flex items-center justify-center min-h-[80vh]">
+        <Card className="w-full max-w-md shadow-lg">
+          <CardContent className="flex flex-col items-center justify-center py-10">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+            <p className="text-center text-muted-foreground">Checking authentication...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const handleImageUpload = () => {
     // In a real app, you would handle file uploads
@@ -92,7 +109,8 @@ function CreateAuctionPage({ userId }: { userId: string }) {
         endTime: endTime.toISOString(),
         images,
         shippingCost: shippingCost ? parseFloat(shippingCost) : 0,
-        shippingLocations: shippingLocations || "domestic"
+        shippingLocations: shippingLocations || "domestic",
+        userId
       };
 
       const response = await fetch('/api/auctions', {
@@ -205,94 +223,111 @@ function CreateAuctionPage({ userId }: { userId: string }) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Auction Settings</CardTitle>
-                <CardDescription>Set your starting price and auction duration.</CardDescription>
+                <CardTitle>Pricing</CardTitle>
+                <CardDescription>Set your starting and reserve prices.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="starting-price">Starting Price ($)</Label>
+                    <Label htmlFor="startingPrice">Starting Price ($)</Label>
                     <Input 
-                      id="starting-price" 
+                      id="startingPrice" 
                       type="number" 
-                      min="1" 
-                      step="0.01" 
                       placeholder="0.00" 
                       required 
+                      min="0.01" 
+                      step="0.01"
                       value={startingPrice}
                       onChange={(e) => setStartingPrice(e.target.value)}
                     />
                   </div>
-
                   <div className="grid gap-2">
-                    <Label htmlFor="reserve-price">Reserve Price ($) (Optional)</Label>
+                    <Label htmlFor="reservePrice">Reserve Price ($) (Optional)</Label>
                     <Input 
-                      id="reserve-price" 
+                      id="reservePrice" 
                       type="number" 
-                      min="0" 
-                      step="0.01" 
                       placeholder="0.00" 
+                      min="0.01" 
+                      step="0.01"
                       value={reservePrice}
                       onChange={(e) => setReservePrice(e.target.value)}
                     />
+                    <p className="text-xs text-muted-foreground">Minimum price for the item to sell. Hidden from bidders.</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Duration</CardTitle>
+                <CardDescription>Choose when your auction will end.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label>End Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !endDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={endDate}
+                          onSelect={setEndDate}
+                          initialFocus
+                          disabled={(date) => date < new Date()}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label htmlFor="hourValue">Hour</Label>
+                      <Select value={hourValue} onValueChange={setHourValue}>
+                        <SelectTrigger id="hourValue">
+                          <SelectValue placeholder="Hour" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <SelectItem key={i} value={i.toString()}>
+                              {i.toString().padStart(2, "0")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="minuteValue">Minute</Label>
+                      <Select value={minuteValue} onValueChange={setMinuteValue}>
+                        <SelectTrigger id="minuteValue">
+                          <SelectValue placeholder="Min" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[0, 15, 30, 45].map((min) => (
+                            <SelectItem key={min} value={min.toString()}>
+                              {min.toString().padStart(2, "0")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid gap-2">
-                  <Label>End Date & Time</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !endDate && "text-muted-foreground",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={endDate}
-                        onSelect={setEndDate}
-                        initialFocus
-                        disabled={(date) => date < new Date()}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <Select value={hourValue} onValueChange={setHourValue}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Hour" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 24 }).map((_, i) => (
-                          <SelectItem key={i} value={i.toString()}>
-                            {i.toString().padStart(2, "0")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={minuteValue} onValueChange={setMinuteValue}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Minute" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[0, 15, 30, 45].map((minute) => (
-                          <SelectItem key={minute} value={minute.toString()}>
-                            {minute.toString().padStart(2, "0")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <Label>Duration</Label>
+                  <Label>Or set duration in days</Label>
                   <Select value={duration} onValueChange={setDuration}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select duration" />
@@ -303,7 +338,8 @@ function CreateAuctionPage({ userId }: { userId: string }) {
                       <SelectItem value="5">5 days</SelectItem>
                       <SelectItem value="7">7 days</SelectItem>
                       <SelectItem value="10">10 days</SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
+                      <SelectItem value="14">14 days</SelectItem>
+                      <SelectItem value="30">30 days</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -313,98 +349,83 @@ function CreateAuctionPage({ userId }: { userId: string }) {
             <Card>
               <CardHeader>
                 <CardTitle>Images</CardTitle>
-                <CardDescription>
-                  Add up to 10 images of your item. The first image will be the main image.
-                </CardDescription>
+                <CardDescription>Upload images of your item.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                  {images.map((img, i) => (
-                    <div key={i} className="relative aspect-square rounded-md overflow-hidden border">
-                      <img
-                        src={img || "/placeholder.svg"}
-                        alt={`Item image ${i + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6"
-                        onClick={() => setImages(images.filter((_, index) => index !== i))}
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {images.map((image, index) => (
+                      <div 
+                        key={index} 
+                        className="aspect-square bg-muted rounded-md overflow-hidden relative flex items-center justify-center"
                       >
-                        ✕
-                      </Button>
-                    </div>
-                  ))}
-
-                  {images.length < 10 && (
-                    <Button
-                      variant="outline"
-                      className="aspect-square flex flex-col items-center justify-center border-dashed"
-                      onClick={handleImageUpload}
+                        {/* In a real app, you would render the image here */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          Image {index + 1}
+                        </div>
+                      </div>
+                    ))}
+                    <button
                       type="button"
+                      className="aspect-square bg-muted rounded-md flex flex-col items-center justify-center gap-1 border-2 border-dashed"
+                      onClick={handleImageUpload}
                     >
-                      <ImagePlus className="h-8 w-8 mb-2" />
-                      <span>Add Image</span>
-                    </Button>
-                  )}
+                      <ImagePlus className="h-6 w-6 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Add Image</span>
+                    </button>
+                  </div>
                 </div>
-
-                <div className="text-sm text-muted-foreground">{images.length} of 10 images added</div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle>Shipping</CardTitle>
-                <CardDescription>Provide shipping details for your item.</CardDescription>
+                <CardDescription>Set shipping details for your item.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="shipping-cost">Shipping Cost ($)</Label>
+                  <Label htmlFor="shippingCost">Shipping Cost ($)</Label>
                   <Input 
-                    id="shipping-cost" 
+                    id="shippingCost" 
                     type="number" 
-                    min="0" 
-                    step="0.01" 
                     placeholder="0.00" 
+                    min="0" 
+                    step="0.01"
                     value={shippingCost}
                     onChange={(e) => setShippingCost(e.target.value)}
                   />
-                  <p className="text-sm text-muted-foreground">Leave at 0 for free shipping</p>
+                  <p className="text-xs text-muted-foreground">Enter 0 for free shipping</p>
                 </div>
 
                 <div className="grid gap-2">
-                  <Label>Shipping Locations</Label>
+                  <Label htmlFor="shippingLocations">Shipping To</Label>
                   <Select value={shippingLocations} onValueChange={setShippingLocations}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select shipping locations" />
+                    <SelectTrigger id="shippingLocations">
+                      <SelectValue placeholder="Select locations" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="domestic">Domestic Only</SelectItem>
                       <SelectItem value="international">International</SelectItem>
-                      <SelectItem value="worldwide">Worldwide</SelectItem>
+                      <SelectItem value="pickup">Local Pickup Only</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </CardContent>
             </Card>
-          </div>
-
-          <div className="mt-6 flex justify-end gap-4">
-            <Button variant="outline" type="button">
-              Save as Draft
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create Auction"
-              )}
-            </Button>
+            
+            <div className="flex justify-end mt-6">
+              <Button type="submit" disabled={isSubmitting} className="min-w-[150px]">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Auction"
+                )}
+              </Button>
+            </div>
           </div>
         </form>
       </div>
