@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useToast } from "@/components/ui/use-toast"
 import { useParams } from "next/navigation"
 import { Clock, DollarSign, Eye, Heart, Share2, ShieldCheck } from "lucide-react"
+import Image from "next/image"
 
 // Define auction type
 interface Bid {
@@ -93,7 +94,7 @@ export default function AuctionPage() {
       try {
         setLoading(true);
         
-        // Check if this is a newly created auction from the auctions array
+        // Fetch from API which now gets data from Supabase
         const response = await fetch(`/api/auctions?id=${id}`);
         if (!response.ok) {
           throw new Error('Failed to fetch auction');
@@ -102,34 +103,47 @@ export default function AuctionPage() {
         const data = await response.json();
         
         // Find the specific auction in the returned array
-        const fetchedAuction = data.auctions.find((a: any) => a.id === id);
+        const fetchedAuction = data.auctions.find((a: any) => a.id === id || a.id.toString() === id);
         
         if (fetchedAuction) {
           // Format the data properly
           const formattedAuction: Auction = {
             ...fetchedAuction,
+            // Convert snake_case properties to camelCase if needed
+            startingPrice: fetchedAuction.startingPrice || fetchedAuction.starting_price,
+            currentBid: fetchedAuction.currentBid || fetchedAuction.current_bid || fetchedAuction.startingPrice,
+            bidCount: fetchedAuction.bidCount || fetchedAuction.bid_count || 0,
             // Ensure endTime is a Date object
-            endTime: new Date(fetchedAuction.endTime),
-            // Add default properties if they don't exist
-            images: fetchedAuction.images || ["/placeholder.svg?height=400&width=600"],
+            endTime: new Date(fetchedAuction.endTime || fetchedAuction.end_time),
+            // Use images array from Supabase or default placeholder
+            images: fetchedAuction.images && fetchedAuction.images.length > 0 
+              ? fetchedAuction.images 
+              : ["/placeholder.svg?height=400&width=600"],
             watchers: fetchedAuction.watchers || Math.floor(Math.random() * 30) + 5,
+            // Use existing bids or empty array
             bids: fetchedAuction.bids || [],
             seller: fetchedAuction.seller || {
-              id: "current-user",
-              name: "Current User",
+              id: fetchedAuction.user_id || "current-user",
+              name: fetchedAuction.seller_name || "Seller",
               rating: 5.0,
               totalSales: 1
-            }
+            },
+            shippingCost: fetchedAuction.shippingCost || fetchedAuction.shipping_cost,
+            shippingLocations: fetchedAuction.shippingLocations || fetchedAuction.shipping_locations
           };
           
           setAuction(formattedAuction);
           
-          // Also update the main image and bid amount
+          // Set main image to the first image in the array
           if (formattedAuction.images && formattedAuction.images.length > 0) {
             setMainImage(formattedAuction.images[0]);
           }
           
-          setBidAmount(formattedAuction.currentBid + 50);
+          // Set initial bid amount to current bid + 50 (or starting price + 50 if no bids)
+          const currentBid = formattedAuction.currentBid || formattedAuction.startingPrice;
+          setBidAmount(currentBid + 50);
+          
+          console.log("Auction loaded successfully:", formattedAuction);
         } else {
           // If auction not found, stay with mock data
           toast({
@@ -264,229 +278,280 @@ export default function AuctionPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left column - Images */}
-        <div className="lg:col-span-2">
-          <div className="rounded-lg overflow-hidden bg-gray-100 mb-4">
-            <img
-              src={mainImage || "/placeholder.svg"}
-              alt={auction.title}
-              className="w-full h-auto object-contain aspect-video"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {auction.images.map((img, i) => (
-              <div
-                key={i}
-                className={`rounded-md overflow-hidden cursor-pointer border-2 ${mainImage === img ? "border-primary" : "border-transparent"}`}
-                onClick={() => setMainImage(img)}
-              >
-                <img
-                  src={img || "/placeholder.svg"}
-                  alt={`${auction.title} ${i + 1}`}
-                  className="w-full h-auto aspect-video object-cover"
-                />
-              </div>
-            ))}
-          </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full"></div>
         </div>
+      ) : (
+        <div className="space-y-8">
+          <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-6">
+            <div>
+              <h1 className="text-3xl font-bold">{auction.title}</h1>
+              <div className="flex items-center mt-2 text-muted-foreground">
+                <Clock className="h-4 w-4 mr-1" /> {timeLeft}
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button size="sm" variant="outline">
+                <Heart className="h-4 w-4 mr-2" />
+                Watch
+              </Button>
+              <Button size="sm" variant="outline">
+                <Share2 className="h-4 w-4 mr-2" />
+                Share
+              </Button>
+            </div>
+          </div>
 
-        {/* Right column - Auction details */}
-        <div>
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-2xl">{auction.title}</CardTitle>
-                  <CardDescription>
-                    {auction.category} • {auction.condition}
-                  </CardDescription>
-                  <div className="flex gap-2 mt-1">
-                    <Badge variant="outline">{auction.category}</Badge>
-                    <Badge variant="outline">{auction.condition}</Badge>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Image Gallery */}
+            <div className="lg:col-span-2">
+              <div className="flex flex-col space-y-4">
+                <div className="relative bg-muted rounded-lg overflow-hidden h-[400px]">
+                  {loading ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+                    </div>
+                  ) : mainImage ? (
+                    <div className="relative h-full w-full">
+                      {/* Use Next.js Image component for Supabase images */}
+                      <Image 
+                        src={mainImage} 
+                        alt={auction.title}
+                        fill
+                        className="object-contain"
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                        priority
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-muted-foreground">No image available</p>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Thumbnail Gallery */}
+                {auction.images && auction.images.length > 0 && (
+                  <div className="grid grid-cols-5 gap-2">
+                    {auction.images.map((image, index) => (
+                      <div 
+                        key={index} 
+                        className={`relative h-20 rounded-md overflow-hidden cursor-pointer border-2 ${mainImage === image ? 'border-primary' : 'border-transparent'}`}
+                        onClick={() => setMainImage(image)}
+                      >
+                        <Image 
+                          src={image} 
+                          alt={`Thumbnail ${index + 1}`} 
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 768px) 20vw, 10vw"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right column - Auction details */}
+            <div>
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-2xl">{auction.title}</CardTitle>
+                      <CardDescription>
+                        {auction.category} • {auction.condition}
+                      </CardDescription>
+                      <div className="flex gap-2 mt-1">
+                        <Badge variant="outline">{auction.category}</Badge>
+                        <Badge variant="outline">{auction.condition}</Badge>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="icon">
+                        <Heart className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon">
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src="/placeholder.svg" />
+                        <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">{auction.seller.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          ⭐ {auction.seller.rating} • {auction.seller.totalSales || 0} sales
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm">
+                      View Profile
+                    </Button>
+                  </div>
+
+                  <div className="border rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5 text-green-600" />
+                        <span className="text-sm font-medium">Current Bid</span>
+                      </div>
+                      <span className="text-xl font-bold">${auction.currentBid.toLocaleString()}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-5 w-5 text-orange-500" />
+                        <span className="text-sm font-medium">Time Left</span>
+                      </div>
+                      <span className="text-lg font-semibold">{timeLeft}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-sm text-muted-foreground">
+                      <span>{auction.bidCount} bids</span>
+                      <div className="flex items-center gap-1">
+                        <Eye className="h-4 w-4" />
+                        <span>{auction.watchers} watching</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <div className="flex gap-2 mb-2">
+                        <Input
+                          type="number"
+                          value={bidAmount}
+                          onChange={(e) => setBidAmount(Number(e.target.value))}
+                          min={auction.currentBid + 1}
+                          className="text-right"
+                        />
+                        <Button onClick={handleBid} className="whitespace-nowrap">
+                          Place Bid
+                        </Button>
+                      </div>
+                      <p className="text-xs text-center text-muted-foreground">
+                        Enter ${(auction.currentBid + 1).toLocaleString()} or more
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-2">
+                      <ShieldCheck className="h-4 w-4 text-green-600" />
+                      <span>Secure payment via Stripe. Buyer protection included.</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Recent Bids</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {auction.bids && auction.bids.length > 0 ? (
+                        auction.bids.map((bid) => (
+                          <li key={bid.id} className="flex justify-between items-center text-sm">
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-6 w-6">
+                                <AvatarFallback>{bid.user.charAt(0)}</AvatarFallback>
+                              </Avatar>
+                              <span>{bid.user}</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="font-medium">${bid.amount.toLocaleString()}</span>
+                              <span className="text-xs text-muted-foreground">{bid.time}</span>
+                            </div>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-center text-sm text-muted-foreground">No bids yet</li>
+                      )}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <Tabs defaultValue="details">
+              <TabsList>
+                <TabsTrigger value="details">Details</TabsTrigger>
+                <TabsTrigger value="shipping">Shipping</TabsTrigger>
+                <TabsTrigger value="seller">Seller Info</TabsTrigger>
+              </TabsList>
+              <TabsContent value="details" className="p-4">
+                <h3 className="text-lg font-medium mb-2">Description</h3>
+                <p>{auction.description}</p>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <h4 className="font-medium">Condition</h4>
+                    <p>{auction.condition}</p>
+                  </div>
+                  <div>
+                    <h4 className="font-medium">Category</h4>
+                    <p>{auction.category}</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon">
-                    <Heart className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon">
-                    <Share2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-8 w-8">
+              </TabsContent>
+              <TabsContent value="shipping" className="p-4">
+                <h3 className="text-lg font-medium mb-2">Shipping Information</h3>
+                <p>
+                  {auction.shippingCost && auction.shippingCost > 0 
+                    ? `Shipping cost: $${auction.shippingCost.toLocaleString()}` 
+                    : 'Free shipping'}
+                </p>
+                <p className="mt-2">
+                  Ships to: {auction.shippingLocations || 'Domestic only'}
+                </p>
+                <p className="mt-2">Estimated delivery: 3-5 business days after payment.</p>
+              </TabsContent>
+              <TabsContent value="seller" className="p-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <Avatar className="h-12 w-12">
                     <AvatarImage src="/placeholder.svg" />
                     <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="text-sm font-medium">{auction.seller.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      ⭐ {auction.seller.rating} • {auction.seller.totalSales || 0} sales
+                    <h3 className="text-lg font-medium">{auction.seller.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Member since {new Date(auction.createdAt || Date.now() - 10000000).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm">
-                  View Profile
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="text-center p-3 border rounded-lg">
+                    <p className="text-2xl font-bold">⭐</p>
+                    <p className="text-sm font-medium">{auction.seller.rating}/5</p>
+                    <p className="text-xs text-muted-foreground">Rating</p>
+                  </div>
+                  <div className="text-center p-3 border rounded-lg">
+                    <p className="text-2xl font-bold">{auction.seller.totalSales || 1}</p>
+                    <p className="text-sm font-medium">Sales</p>
+                    <p className="text-xs text-muted-foreground">Completed</p>
+                  </div>
+                  <div className="text-center p-3 border rounded-lg">
+                    <p className="text-2xl font-bold">100%</p>
+                    <p className="text-sm font-medium">Positive</p>
+                    <p className="text-xs text-muted-foreground">Feedback</p>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full">
+                  View All Items by This Seller
                 </Button>
-              </div>
-
-              <div className="border rounded-lg p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-green-600" />
-                    <span className="text-sm font-medium">Current Bid</span>
-                  </div>
-                  <span className="text-xl font-bold">${auction.currentBid.toLocaleString()}</span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-orange-500" />
-                    <span className="text-sm font-medium">Time Left</span>
-                  </div>
-                  <span className="text-lg font-semibold">{timeLeft}</span>
-                </div>
-
-                <div className="flex justify-between items-center text-sm text-muted-foreground">
-                  <span>{auction.bidCount} bids</span>
-                  <div className="flex items-center gap-1">
-                    <Eye className="h-4 w-4" />
-                    <span>{auction.watchers} watching</span>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <div className="flex gap-2 mb-2">
-                    <Input
-                      type="number"
-                      value={bidAmount}
-                      onChange={(e) => setBidAmount(Number(e.target.value))}
-                      min={auction.currentBid + 1}
-                      className="text-right"
-                    />
-                    <Button onClick={handleBid} className="whitespace-nowrap">
-                      Place Bid
-                    </Button>
-                  </div>
-                  <p className="text-xs text-center text-muted-foreground">
-                    Enter ${(auction.currentBid + 1).toLocaleString()} or more
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-2">
-                  <ShieldCheck className="h-4 w-4 text-green-600" />
-                  <span>Secure payment via Stripe. Buyer protection included.</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="mt-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Recent Bids</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {auction.bids && auction.bids.length > 0 ? (
-                    auction.bids.map((bid) => (
-                      <li key={bid.id} className="flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarFallback>{bid.user.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <span>{bid.user}</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-medium">${bid.amount.toLocaleString()}</span>
-                          <span className="text-xs text-muted-foreground">{bid.time}</span>
-                        </div>
-                      </li>
-                    ))
-                  ) : (
-                    <li className="text-center text-sm text-muted-foreground">No bids yet</li>
-                  )}
-                </ul>
-              </CardContent>
-            </Card>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
-      </div>
-
-      <div className="mt-8">
-        <Tabs defaultValue="details">
-          <TabsList>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="shipping">Shipping</TabsTrigger>
-            <TabsTrigger value="seller">Seller Info</TabsTrigger>
-          </TabsList>
-          <TabsContent value="details" className="p-4">
-            <h3 className="text-lg font-medium mb-2">Description</h3>
-            <p>{auction.description}</p>
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <div>
-                <h4 className="font-medium">Condition</h4>
-                <p>{auction.condition}</p>
-              </div>
-              <div>
-                <h4 className="font-medium">Category</h4>
-                <p>{auction.category}</p>
-              </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="shipping" className="p-4">
-            <h3 className="text-lg font-medium mb-2">Shipping Information</h3>
-            <p>
-              {auction.shippingCost && auction.shippingCost > 0 
-                ? `Shipping cost: $${auction.shippingCost.toLocaleString()}` 
-                : 'Free shipping'}
-            </p>
-            <p className="mt-2">
-              Ships to: {auction.shippingLocations || 'Domestic only'}
-            </p>
-            <p className="mt-2">Estimated delivery: 3-5 business days after payment.</p>
-          </TabsContent>
-          <TabsContent value="seller" className="p-4">
-            <div className="flex items-center gap-3 mb-4">
-              <Avatar className="h-12 w-12">
-                <AvatarImage src="/placeholder.svg" />
-                <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <div>
-                <h3 className="text-lg font-medium">{auction.seller.name}</h3>
-                <p className="text-sm text-muted-foreground">
-                  Member since {new Date(auction.createdAt || Date.now() - 10000000).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="text-center p-3 border rounded-lg">
-                <p className="text-2xl font-bold">⭐</p>
-                <p className="text-sm font-medium">{auction.seller.rating}/5</p>
-                <p className="text-xs text-muted-foreground">Rating</p>
-              </div>
-              <div className="text-center p-3 border rounded-lg">
-                <p className="text-2xl font-bold">{auction.seller.totalSales || 1}</p>
-                <p className="text-sm font-medium">Sales</p>
-                <p className="text-xs text-muted-foreground">Completed</p>
-              </div>
-              <div className="text-center p-3 border rounded-lg">
-                <p className="text-2xl font-bold">100%</p>
-                <p className="text-sm font-medium">Positive</p>
-                <p className="text-xs text-muted-foreground">Feedback</p>
-              </div>
-            </div>
-            <Button variant="outline" className="w-full">
-              View All Items by This Seller
-            </Button>
-          </TabsContent>
-        </Tabs>
-      </div>
+      )}
     </div>
   )
 }

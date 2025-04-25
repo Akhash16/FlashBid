@@ -13,10 +13,11 @@ import { useToast } from "@/components/ui/use-toast"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
-import { CalendarIcon, ImagePlus, Loader2 } from "lucide-react"
+import { CalendarIcon, ImagePlus, Loader2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/utils/supabase/client"
+import Image from "next/image"
 
 interface CreateAuctionFormProps {
   userId: string
@@ -29,6 +30,8 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [images, setImages] = useState<string[]>([])
   const [endDate, setEndDate] = useState<Date>()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
   
   // Form data states
   const [title, setTitle] = useState("")
@@ -43,10 +46,128 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
   const [shippingCost, setShippingCost] = useState("")
   const [shippingLocations, setShippingLocations] = useState("")
 
-  const handleImageUpload = () => {
-    // In a real app, you would handle file uploads to Supabase Storage
-    // For demo purposes, we'll just add placeholder images
-    setImages([...images, `/placeholder.svg?height=400&width=600&text=Image ${images.length + 1}`])
+  const handleImageUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setIsUploading(true)
+    const uploadedUrls: string[] = []
+    
+    try {
+      // Process each file
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        
+        // Check file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          toast({
+            title: "Upload failed",
+            description: `File "${file.name}" exceeds the 5MB size limit`,
+            variant: "destructive",
+          })
+          continue
+        }
+        
+        // Only allow certain image types
+        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if (!validTypes.includes(file.type)) {
+          toast({
+            title: "Upload failed",
+            description: `File "${file.name}" has an unsupported format. Please use JPEG, PNG, GIF or WEBP.`,
+            variant: "destructive",
+          })
+          continue
+        }
+        
+        // Create unique filename
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${userId}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`
+        const filePath = `${fileName}`
+        
+        // Upload file to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('auction-images')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
+          
+        if (error) {
+          console.error('Error uploading file:', error.message)
+          toast({
+            title: "Upload failed",
+            description: error.message,
+            variant: "destructive",
+          })
+          
+          // If bucket doesn't exist, try to create it
+          if (error.message.includes('bucket') && error.message.includes('not found')) {
+            const createResponse = await fetch('/api/storage')
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            
+            // Try upload again
+            const retryUpload = await supabase.storage
+              .from('auction-images')
+              .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: false
+              })
+              
+            if (retryUpload.error) {
+              console.error('Retry upload failed:', retryUpload.error.message)
+            } else {
+              // Get public URL
+              const { data: { publicUrl } } = supabase.storage
+                .from('auction-images')
+                .getPublicUrl(filePath)
+                
+              uploadedUrls.push(publicUrl)
+              toast({
+                title: "Image uploaded",
+                description: `${i + 1} of ${files.length} images uploaded`,
+              })
+            }
+          }
+        } else {
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('auction-images')
+            .getPublicUrl(filePath)
+            
+          uploadedUrls.push(publicUrl)
+          toast({
+            title: "Image uploaded",
+            description: `${i + 1} of ${files.length} images uploaded`,
+          })
+        }
+      }
+      
+      // Update images state with new URLs
+      setImages([...images, ...uploadedUrls])
+    } catch (error) {
+      console.error('Error in image upload:', error)
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploading(false)
+      // Clear the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const removeImage = (indexToRemove: number) => {
+    setImages(images.filter((_, index) => index !== indexToRemove))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,6 +175,17 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
     setIsSubmitting(true)
 
     try {
+      // Validate at least one image
+      if (images.length === 0) {
+        toast({
+          title: "Error",
+          description: "Please add at least one image of your item",
+          variant: "destructive",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
       // Calculate end time based on duration or endDate+hour+minute
       let endTime = new Date();
       if (endDate && hourValue && minuteValue) {
@@ -71,15 +203,16 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
       const auctionData = {
         title,
         description,
-        startingPrice: parseFloat(startingPrice),
-        reservePrice: reservePrice ? parseFloat(reservePrice) : undefined,
+        starting_price: parseFloat(startingPrice),
+        reserve_price: reservePrice ? parseFloat(reservePrice) : null,
         category,
         condition,
-        endTime: endTime.toISOString(),
+        end_time: endTime.toISOString(),
         images,
-        shippingCost: shippingCost ? parseFloat(shippingCost) : 0,
-        shippingLocations: shippingLocations || "domestic",
-        user_id: userId // Store the user ID of the creator
+        shipping_cost: shippingCost ? parseFloat(shippingCost) : 0,
+        shipping_locations: shippingLocations || "domestic",
+        user_id: userId, // Store the user ID of the creator
+        status: 'active'
       };
 
       // Insert the auction into Supabase
@@ -188,6 +321,71 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
 
             <Card>
               <CardHeader>
+                <CardTitle>Images</CardTitle>
+                <CardDescription>Upload images of your item (up to 5 images, 5MB max per image)</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleImageFileChange}
+                  />
+                  
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-36 border-dashed"
+                    onClick={handleImageUploadClick}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? (
+                      <div className="flex flex-col items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                        <span>Uploading...</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center">
+                        <ImagePlus className="h-8 w-8 mb-2" />
+                        <span>Click to add images</span>
+                      </div>
+                    )}
+                  </Button>
+                </div>
+
+                {images.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    {images.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <div className="rounded-md overflow-hidden border relative h-24">
+                          <Image 
+                            src={url} 
+                            alt={`Auction image ${index + 1}`} 
+                            fill 
+                            className="object-cover"
+                          />
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            className="absolute hidden group-hover:flex right-1 top-1 h-6 w-6"
+                            onClick={() => removeImage(index)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle>Auction Settings</CardTitle>
                 <CardDescription>Set your starting price and auction duration.</CardDescription>
               </CardHeader>
@@ -198,84 +396,89 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
                     <Input 
                       id="starting-price" 
                       type="number" 
-                      min="1" 
-                      step="0.01" 
                       placeholder="0.00" 
-                      required 
+                      required
+                      min="0.01"
+                      step="0.01"
                       value={startingPrice}
                       onChange={(e) => setStartingPrice(e.target.value)}
                     />
                   </div>
-
                   <div className="grid gap-2">
                     <Label htmlFor="reserve-price">Reserve Price ($) (Optional)</Label>
                     <Input 
                       id="reserve-price" 
                       type="number" 
-                      min="0" 
-                      step="0.01" 
                       placeholder="0.00" 
+                      min="0.01"
+                      step="0.01"
                       value={reservePrice}
                       onChange={(e) => setReservePrice(e.target.value)}
                     />
                   </div>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label>End Date & Time</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !endDate && "text-muted-foreground",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={endDate}
-                        onSelect={setEndDate}
-                        initialFocus
-                        disabled={(date) => date < new Date()}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <Select value={hourValue} onValueChange={setHourValue}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Hour" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 24 }).map((_, i) => (
-                          <SelectItem key={i} value={i.toString()}>
-                            {i.toString().padStart(2, "0")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={minuteValue} onValueChange={setMinuteValue}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Minute" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[0, 15, 30, 45].map((minute) => (
-                          <SelectItem key={minute} value={minute.toString()}>
-                            {minute.toString().padStart(2, "0")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-2">
+                  <Label>End Date and Time</Label>
+                  <div className="flex space-x-2">
+                    <div className="flex-1">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !endDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {endDate ? format(endDate, "PPP") : "Select date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={endDate}
+                            onSelect={setEndDate}
+                            initialFocus
+                            disabled={date => date < new Date()}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="w-20">
+                      <Select value={hourValue} onValueChange={setHourValue}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Hour" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from(Array(24).keys()).map((hour) => (
+                            <SelectItem key={hour} value={hour.toString()}>
+                              {hour.toString().padStart(2, '0')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="w-20">
+                      <Select value={minuteValue} onValueChange={setMinuteValue}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Min" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[0, 15, 30, 45].map((minute) => (
+                            <SelectItem key={minute} value={minute.toString()}>
+                              {minute.toString().padStart(2, '0')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label>Duration</Label>
+                <div className="space-y-2">
+                  <Label>Or select duration</Label>
                   <Select value={duration} onValueChange={setDuration}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select duration" />
@@ -286,7 +489,8 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
                       <SelectItem value="5">5 days</SelectItem>
                       <SelectItem value="7">7 days</SelectItem>
                       <SelectItem value="10">10 days</SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
+                      <SelectItem value="14">14 days</SelectItem>
+                      <SelectItem value="30">30 days</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -295,53 +499,8 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Images</CardTitle>
-                <CardDescription>
-                  Add up to 10 images of your item. The first image will be the main image.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                  {images.map((img, i) => (
-                    <div key={i} className="relative aspect-square rounded-md overflow-hidden border">
-                      <img
-                        src={img || "/placeholder.svg"}
-                        alt={`Item image ${i + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6"
-                        onClick={() => setImages(images.filter((_, index) => index !== i))}
-                        type="button"
-                      >
-                        ✕
-                      </Button>
-                    </div>
-                  ))}
-
-                  {images.length < 10 && (
-                    <Button
-                      variant="outline"
-                      className="aspect-square flex flex-col items-center justify-center border-dashed"
-                      onClick={handleImageUpload}
-                      type="button"
-                    >
-                      <ImagePlus className="h-8 w-8 mb-2" />
-                      <span>Add Image</span>
-                    </Button>
-                  )}
-                </div>
-
-                <div className="text-sm text-muted-foreground">{images.length} of 10 images added</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Shipping</CardTitle>
-                <CardDescription>Provide shipping details for your item.</CardDescription>
+                <CardTitle>Shipping Details</CardTitle>
+                <CardDescription>Provide details about shipping.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-2">
@@ -349,44 +508,43 @@ export default function CreateAuctionForm({ userId }: CreateAuctionFormProps) {
                   <Input 
                     id="shipping-cost" 
                     type="number" 
-                    min="0" 
-                    step="0.01" 
-                    placeholder="0.00" 
+                    placeholder="0.00 (free shipping)" 
+                    min="0"
+                    step="0.01"
                     value={shippingCost}
                     onChange={(e) => setShippingCost(e.target.value)}
                   />
-                  <p className="text-sm text-muted-foreground">Leave at 0 for free shipping</p>
                 </div>
 
                 <div className="grid gap-2">
-                  <Label>Shipping Locations</Label>
+                  <Label htmlFor="shipping-locations">Shipping Locations</Label>
                   <Select value={shippingLocations} onValueChange={setShippingLocations}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select shipping locations" />
+                    <SelectTrigger id="shipping-locations">
+                      <SelectValue placeholder="Select locations" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="domestic">Domestic Only</SelectItem>
                       <SelectItem value="international">International</SelectItem>
-                      <SelectItem value="worldwide">Worldwide</SelectItem>
+                      <SelectItem value="local-pickup">Local Pickup Only</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </CardContent>
             </Card>
-          </div>
 
-          <div className="mt-6 flex justify-end gap-4">
-            <Button variant="outline" type="button">
-              Save as Draft
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button 
+              type="submit" 
+              className="w-full mt-4" 
+              size="lg"
+              disabled={isSubmitting}
+            >
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  Creating Auction...
                 </>
               ) : (
-                "Create Auction"
+                'Create Auction'
               )}
             </Button>
           </div>

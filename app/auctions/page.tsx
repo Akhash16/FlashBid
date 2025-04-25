@@ -15,26 +15,30 @@ import Link from "next/link"
 import { Clock, Filter, Search, SlidersHorizontal } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 
-// Mock auctions data
-const mockAuctions = Array.from({ length: 12 }).map((_, i) => ({
-  id: `auction-${i + 1}`,
-  title: `Auction Item ${i + 1}`,
-  description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-  currentBid: Math.floor(Math.random() * 1000) + 50,
-  endTime: new Date(Date.now() + Math.random() * 10000000),
-  bidCount: Math.floor(Math.random() * 20),
-  image: `/placeholder.svg?height=200&width=300&text=Item ${i + 1}`,
-  category: ["Electronics", "Collectibles", "Fashion", "Art", "Home"][Math.floor(Math.random() * 5)],
-  condition: ["New", "Like New", "Excellent", "Good", "Fair"][Math.floor(Math.random() * 5)],
-}))
+// Define auction type
+interface Auction {
+  id: string;
+  title: string;
+  description: string;
+  currentBid?: number;
+  startingPrice: number;
+  endTime: Date;
+  bidCount?: number;
+  images?: string[];
+  image?: string;
+  category: string;
+  condition: string;
+}
 
 export default function AuctionsPage() {
-  const [auctions, setAuctions] = useState(mockAuctions)
+  const [auctions, setAuctions] = useState<Auction[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [priceRange, setPriceRange] = useState([0, 1000])
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [sortBy, setSortBy] = useState("ending-soon")
   const [selectedConditions, setSelectedConditions] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const categories = ["Electronics", "Collectibles", "Fashion", "Art", "Home"]
 
@@ -56,6 +60,10 @@ export default function AuctionsPage() {
     console.log("Searching for:", searchQuery)
   }
 
+  // Client-side only time formatting to prevent hydration mismatch
+  const [timeLeft, setTimeLeft] = useState<Record<string, string>>({})
+
+  // Format time left function
   const formatTimeLeft = (endTime: Date) => {
     const now = new Date()
     const diff = endTime.getTime() - now.getTime()
@@ -71,37 +79,121 @@ export default function AuctionsPage() {
     return `${minutes}m`
   }
 
+  // Update time left for all auctions on client-side only
+  useEffect(() => {
+    const updateTimeLeft = () => {
+      const newTimeLeft: Record<string, string> = {}
+      auctions.forEach(auction => {
+        newTimeLeft[auction.id] = formatTimeLeft(auction.endTime)
+      })
+      setTimeLeft(newTimeLeft)
+    }
+    
+    // Initial update
+    updateTimeLeft()
+    
+    // Set interval to update time left every minute
+    const intervalId = setInterval(updateTimeLeft, 60000)
+    
+    return () => clearInterval(intervalId)
+  }, [auctions])
+
+  // Fetch auctions from the API
+  useEffect(() => {
+    const fetchAuctions = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/auctions');
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch auctions');
+        }
+        
+        const data = await response.json();
+        
+        // Transform the data to match our Auction interface
+        const transformedAuctions = data.auctions.map((auction: any) => ({
+          ...auction,
+          // Convert string dates to Date objects
+          endTime: new Date(auction.end_time || auction.endTime),
+          // Use starting_price as currentBid if no bids yet
+          currentBid: auction.current_bid || auction.currentBid || auction.starting_price,
+          // Handle image array vs single image
+          image: auction.images && auction.images.length > 0 ? auction.images[0] : auction.image || '/placeholder.svg'
+        }));
+        
+        setAuctions(transformedAuctions);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching auctions:', err);
+        setError('Failed to load auctions. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchAuctions();
+  }, []);
+  
   const applyFilters = () => {
-    // Start with all auctions
-    let filtered = mockAuctions
-
-    // Apply price range filter
-    filtered = filtered.filter((auction) => auction.currentBid >= priceRange[0] && auction.currentBid <= priceRange[1])
-
-    // Apply category filter if any categories are selected
-    if (selectedCategories.length > 0) {
-      filtered = filtered.filter((auction) => selectedCategories.includes(auction.category))
-    }
-
-    // Apply condition filter if any conditions are selected
-    if (selectedConditions.length > 0) {
-      filtered = filtered.filter((auction) => selectedConditions.includes(auction.condition))
-    }
-
-    // Apply search query if present
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(
-        (auction) =>
-          auction.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          auction.description.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    }
-
-    // Update the auctions state
-    setAuctions(filtered)
+    // Fetch filtered auctions from the API
+    const fetchFilteredAuctions = async () => {
+      try {
+        setLoading(true);
+        
+        // Build query parameters
+        const params = new URLSearchParams();
+        
+        if (searchQuery.trim()) {
+          params.append('query', searchQuery);
+        }
+        
+        if (selectedCategories.length > 0) {
+          params.append('category', selectedCategories.join(','));
+        }
+        
+        if (selectedConditions.length > 0) {
+          params.append('condition', selectedConditions.join(','));
+        }
+        
+        params.append('minPrice', priceRange[0].toString());
+        params.append('maxPrice', priceRange[1].toString());
+        
+        const response = await fetch(`/api/auctions?${params.toString()}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch filtered auctions');
+        }
+        
+        const data = await response.json();
+        
+        // Transform the data to match our Auction interface
+        const transformedAuctions = data.auctions.map((auction: any) => ({
+          ...auction,
+          // Convert string dates to Date objects
+          endTime: new Date(auction.end_time || auction.endTime),
+          // Use starting_price as currentBid if no bids yet
+          currentBid: auction.current_bid || auction.currentBid || auction.starting_price,
+          // Handle image array vs single image
+          image: auction.images && auction.images.length > 0 ? auction.images[0] : auction.image || '/placeholder.svg'
+        }));
+        
+        setAuctions(transformedAuctions);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching filtered auctions:', err);
+        setError('Failed to apply filters. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchFilteredAuctions();
   }
 
   useEffect(() => {
+    if (auctions.length === 0) return;
+    
     const sortedAuctions = [...auctions]
 
     switch (sortBy) {
@@ -112,18 +204,18 @@ export default function AuctionsPage() {
         sortedAuctions.sort((a, b) => b.endTime.getTime() - a.endTime.getTime())
         break
       case "price-low":
-        sortedAuctions.sort((a, b) => a.currentBid - b.currentBid)
+        sortedAuctions.sort((a, b) => (a.currentBid || 0) - (b.currentBid || 0))
         break
       case "price-high":
-        sortedAuctions.sort((a, b) => b.currentBid - a.currentBid)
+        sortedAuctions.sort((a, b) => (b.currentBid || 0) - (a.currentBid || 0))
         break
       case "bids":
-        sortedAuctions.sort((a, b) => b.bidCount - a.bidCount)
+        sortedAuctions.sort((a, b) => (b.bidCount || 0) - (a.bidCount || 0))
         break
     }
 
     setAuctions(sortedAuctions)
-  }, [sortBy])
+  }, [sortBy, auctions.length])
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -215,7 +307,7 @@ export default function AuctionsPage() {
                     setSelectedConditions([])
                     setPriceRange([0, 1000])
                     setSearchQuery("")
-                    setAuctions(mockAuctions)
+                    window.location.reload()
                   }}
                 >
                   Reset
@@ -339,46 +431,69 @@ export default function AuctionsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {auctions.map((auction) => (
-              <Card key={auction.id} className="overflow-hidden">
-                <div className="aspect-video relative">
-                  <img
-                    src={auction.image || "/placeholder.svg"}
-                    alt={auction.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {formatTimeLeft(auction.endTime)}
-                    </Badge>
-                  </div>
-                </div>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-lg truncate">{auction.title}</CardTitle>
-                  <div className="flex gap-2 mt-1">
-                    <Badge variant="outline">{auction.category}</Badge>
-                    <Badge variant="outline">{auction.condition}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Current Bid</p>
-                      <p className="text-lg font-bold">${auction.currentBid}</p>
+          {loading ? (
+            <div className="col-span-full flex justify-center items-center py-12">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+                <p>Loading auctions...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="col-span-full text-center py-12">
+              <p className="text-destructive">{error}</p>
+              <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            </div>
+          ) : auctions.length === 0 ? (
+            <div className="col-span-full text-center py-12">
+              <p>No auctions found matching your criteria.</p>
+              <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
+                Reset Filters
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {auctions.map((auction) => (
+                <Card key={auction.id} className="overflow-hidden">
+                  <div className="aspect-video relative">
+                    <img
+                      src={auction.image || "/placeholder.svg"}
+                      alt={auction.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2">
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {timeLeft[auction.id] || ""}
+                      </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">{auction.bidCount} bids</p>
                   </div>
-                </CardContent>
-                <CardFooter className="p-4 pt-0">
-                  <Button asChild className="w-full">
-                    <Link href={`/auctions/${auction.id}`}>View Auction</Link>
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-lg truncate">{auction.title}</CardTitle>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="outline">{auction.category}</Badge>
+                      <Badge variant="outline">{auction.condition}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Current Bid</p>
+                        <p className="text-lg font-bold">${auction.currentBid || auction.startingPrice}</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{auction.bidCount || 0} bids</p>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="p-4 pt-0">
+                    <Button asChild className="w-full">
+                      <Link href={`/auctions/${auction.id}`}>View Auction</Link>
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
