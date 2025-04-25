@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -34,12 +34,19 @@ export default function AuctionsPage() {
   const [priceRange, setPriceRange] = useState([0, 1000])
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [sortBy, setSortBy] = useState("ending-soon")
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([])
 
   const categories = ["Electronics", "Collectibles", "Fashion", "Art", "Home"]
 
   const handleCategoryToggle = (category: string) => {
     setSelectedCategories((prev) =>
       prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
+    )
+  }
+
+  const handleConditionToggle = (condition: string) => {
+    setSelectedConditions((prev) =>
+      prev.includes(condition) ? prev.filter((c) => c !== condition) : [...prev, condition],
     )
   }
 
@@ -63,6 +70,60 @@ export default function AuctionsPage() {
     if (hours > 0) return `${hours}h ${minutes}m`
     return `${minutes}m`
   }
+
+  const applyFilters = () => {
+    // Start with all auctions
+    let filtered = mockAuctions
+
+    // Apply price range filter
+    filtered = filtered.filter((auction) => auction.currentBid >= priceRange[0] && auction.currentBid <= priceRange[1])
+
+    // Apply category filter if any categories are selected
+    if (selectedCategories.length > 0) {
+      filtered = filtered.filter((auction) => selectedCategories.includes(auction.category))
+    }
+
+    // Apply condition filter if any conditions are selected
+    if (selectedConditions.length > 0) {
+      filtered = filtered.filter((auction) => selectedConditions.includes(auction.condition))
+    }
+
+    // Apply search query if present
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(
+        (auction) =>
+          auction.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          auction.description.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    }
+
+    // Update the auctions state
+    setAuctions(filtered)
+  }
+
+  useEffect(() => {
+    const sortedAuctions = [...auctions]
+
+    switch (sortBy) {
+      case "ending-soon":
+        sortedAuctions.sort((a, b) => a.endTime.getTime() - b.endTime.getTime())
+        break
+      case "newest":
+        sortedAuctions.sort((a, b) => b.endTime.getTime() - a.endTime.getTime())
+        break
+      case "price-low":
+        sortedAuctions.sort((a, b) => a.currentBid - b.currentBid)
+        break
+      case "price-high":
+        sortedAuctions.sort((a, b) => b.currentBid - a.currentBid)
+        break
+      case "bids":
+        sortedAuctions.sort((a, b) => b.bidCount - a.bidCount)
+        break
+    }
+
+    setAuctions(sortedAuctions)
+  }, [sortBy])
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -134,12 +195,43 @@ export default function AuctionsPage() {
                   <div className="space-y-2">
                     {["New", "Like New", "Excellent", "Good", "Fair"].map((condition) => (
                       <div key={condition} className="flex items-center space-x-2">
-                        <Checkbox id={`condition-mobile-${condition}`} />
+                        <Checkbox
+                          id={`condition-mobile-${condition}`}
+                          checked={selectedConditions.includes(condition)}
+                          onCheckedChange={() => handleConditionToggle(condition)}
+                        />
                         <Label htmlFor={`condition-mobile-${condition}`}>{condition}</Label>
                       </div>
                     ))}
                   </div>
                 </div>
+              </div>
+              <div className="mt-6 flex gap-2">
+                <Button
+                  variant="outline"
+                  className="w-1/2"
+                  onClick={() => {
+                    setSelectedCategories([])
+                    setSelectedConditions([])
+                    setPriceRange([0, 1000])
+                    setSearchQuery("")
+                    setAuctions(mockAuctions)
+                  }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  className="w-1/2"
+                  onClick={() => {
+                    applyFilters()
+                    // Close the sheet after applying filters
+                    document
+                      .querySelector('[data-state="open"]')
+                      ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+                  }}
+                >
+                  Apply Filters
+                </Button>
               </div>
             </SheetContent>
           </Sheet>
@@ -192,15 +284,34 @@ export default function AuctionsPage() {
                 <div className="space-y-2">
                   {["New", "Like New", "Excellent", "Good", "Fair"].map((condition) => (
                     <div key={condition} className="flex items-center space-x-2">
-                      <Checkbox id={`condition-${condition}`} />
+                      <Checkbox
+                        id={`condition-${condition}`}
+                        checked={selectedConditions.includes(condition)}
+                        onCheckedChange={() => handleConditionToggle(condition)}
+                      />
                       <Label htmlFor={`condition-${condition}`}>{condition}</Label>
                     </div>
                   ))}
                 </div>
               </div>
             </CardContent>
-            <CardFooter>
-              <Button className="w-full">Apply Filters</Button>
+            <CardFooter className="flex gap-2">
+              <Button
+                variant="outline"
+                className="w-1/2"
+                onClick={() => {
+                  setSelectedCategories([])
+                  setSelectedConditions([])
+                  setPriceRange([0, 1000])
+                  setSearchQuery("")
+                  setAuctions(mockAuctions)
+                }}
+              >
+                Reset
+              </Button>
+              <Button className="w-1/2" onClick={applyFilters}>
+                Apply Filters
+              </Button>
             </CardFooter>
           </Card>
         </div>
