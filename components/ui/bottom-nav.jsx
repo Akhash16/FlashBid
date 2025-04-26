@@ -82,7 +82,7 @@ export function BottomNav() {
   ]
   
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background border-t">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#1a202c] border-t border-gray-800">
       <nav className="flex justify-around">
         {navItems.map((item) => {
           const Icon = item.icon
@@ -92,8 +92,8 @@ export function BottomNav() {
               href={item.href}
               className={`flex flex-col items-center py-2 px-4 ${
                 isActive(item.href)
-                  ? "text-primary"
-                  : "text-muted-foreground"
+                  ? "text-blue-400"
+                  : "text-gray-400"
               }`}
             >
               <Icon size={20} />

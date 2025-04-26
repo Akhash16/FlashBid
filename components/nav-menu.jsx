@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { createClient } from "@/utils/supabase/client"
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
+import Image from "next/image"
 
 export default function NavMenu() {
   const [user, setUser] = useState(null)
@@ -47,10 +48,10 @@ export default function NavMenu() {
   const NavLink = ({ href, children }) => (
     <Link 
       href={href} 
-      className={`transition-colors hover:text-primary ${
+      className={`transition-colors hover:text-blue-400 ${
         isActive(href) 
-          ? 'font-medium text-primary' 
-          : 'text-foreground/80'
+          ? 'font-medium text-blue-400' 
+          : 'text-gray-300'
       }`}
     >
       {children}
@@ -58,10 +59,11 @@ export default function NavMenu() {
   )
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-40 w-full border-b border-gray-800 bg-[#1a202c]/95 backdrop-blur supports-[backdrop-filter]:bg-[#1a202c]/80">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="text-xl font-bold flex items-center gap-2">
-          <span className="text-primary">⚡</span> FlashBid
+          <img src="/flashbid_logo.png" alt="FlashBid Logo" className="h-9 w-auto" />
+          {/* <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">FlashBid</span> */}
         </Link>
 
         {/* Desktop navigation only - mobile uses bottom nav instead */}
@@ -71,16 +73,16 @@ export default function NavMenu() {
           {!loading && user ? (
             <>
               <NavLink href="/auctions/create">Create Auction</NavLink>
-              <Button variant="outline" onClick={handleSignOut} size="sm">
+              <Button variant="outline" onClick={handleSignOut} size="sm" className="border-gray-700 text-gray-200 hover:bg-gray-800">
                 Sign Out
               </Button>
             </>
           ) : (
             <>
-              <Button variant="outline" asChild size="sm" className="bg-background hover:bg-secondary">
+              <Button variant="outline" asChild size="sm" className="border-gray-700 text-gray-200 hover:bg-gray-800">
                 <Link href="/auth/signin">Sign In</Link>
               </Button>
-              <Button asChild size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Button asChild size="sm" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0">
                 <Link href="/auth/signup">Sign Up</Link>
               </Button>
             </>

@@ -46,47 +46,16 @@ interface Auction {
   shippingLocations?: string;
 }
 
-// Mock auction data as fallback
-const mockAuction: Auction = {
-  id: "1",
-  title: "Vintage Watch Collection",
-  description: "A collection of rare vintage watches from the 1950s. Includes 5 watches in excellent condition.",
-  seller: {
-    id: "seller1",
-    name: "John Collector",
-    rating: 4.8,
-    totalSales: 124,
-  },
-  startingPrice: 1000,
-  currentBid: 1250,
-  bidCount: 8,
-  endTime: new Date(Date.now() + 10000000), // ~3 hours from now
-  images: [
-    "/placeholder.svg?height=400&width=600",
-    "/placeholder.svg?height=400&width=600",
-    "/placeholder.svg?height=400&width=600",
-  ],
-  watchers: 24,
-  category: "Collectibles",
-  condition: "Excellent",
-  bids: [
-    { id: "bid1", user: "Alice", amount: 1250, time: "2 minutes ago" },
-    { id: "bid2", user: "Bob", amount: 1200, time: "15 minutes ago" },
-    { id: "bid3", user: "Charlie", amount: 1150, time: "32 minutes ago" },
-    { id: "bid4", user: "David", amount: 1100, time: "1 hour ago" },
-    { id: "bid5", user: "Eve", amount: 1050, time: "2 hours ago" },
-  ],
-}
-
 export default function AuctionPage() {
   const { id } = useParams()
   const { toast } = useToast()
-  const [auction, setAuction] = useState<Auction>(mockAuction)
+  const [auction, setAuction] = useState<Auction | null>(null)
   const [loading, setLoading] = useState(true)
-  const [bidAmount, setBidAmount] = useState(auction.currentBid + 50)
+  const [bidAmount, setBidAmount] = useState<number>(0)
   const [timeLeft, setTimeLeft] = useState("")
   const [isConnected, setIsConnected] = useState(false)
-  const [mainImage, setMainImage] = useState(auction.images[0])
+  const [mainImage, setMainImage] = useState<string>("")
+  const [error, setError] = useState<string | null>(null)
 
   // Fetch auction data
   useEffect(() => {
@@ -94,13 +63,20 @@ export default function AuctionPage() {
       try {
         setLoading(true);
         
-        // Fetch from API which now gets data from Supabase
+        // Fetch from Supabase API endpoint
         const response = await fetch(`/api/auctions?id=${id}`);
         if (!response.ok) {
           throw new Error('Failed to fetch auction');
         }
         
         const data = await response.json();
+        console.log("Supabase API response:", data);
+        
+        // Check if we have any auctions
+        if (!data.auctions || data.auctions.length === 0) {
+          setError("Auction not found");
+          return;
+        }
         
         // Find the specific auction in the returned array
         const fetchedAuction = data.auctions.find((a: any) => a.id === id || a.id.toString() === id);
@@ -145,18 +121,14 @@ export default function AuctionPage() {
           
           console.log("Auction loaded successfully:", formattedAuction);
         } else {
-          // If auction not found, stay with mock data
-          toast({
-            title: "Auction not found",
-            description: "Using sample auction data instead.",
-            variant: "destructive",
-          });
+          setError("Auction not found");
         }
       } catch (error) {
         console.error("Error fetching auction:", error);
+        setError(error instanceof Error ? error.message : "Could not load auction data");
         toast({
           title: "Error",
-          description: "Could not load auction data. Using sample data instead.",
+          description: "Could not load auction data.",
           variant: "destructive",
         });
       } finally {
@@ -171,6 +143,8 @@ export default function AuctionPage() {
 
   // Calculate time left
   useEffect(() => {
+    if (!auction) return;
+    
     const interval = setInterval(() => {
       const now = new Date()
       const diff = auction.endTime.getTime() - now.getTime()
@@ -189,7 +163,7 @@ export default function AuctionPage() {
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [auction.endTime])
+  }, [auction?.endTime])
 
   // Connect to WebSocket
   useEffect(() => {
@@ -239,6 +213,8 @@ export default function AuctionPage() {
   }, [])
 
   const handleBid = () => {
+    if (!auction) return;
+    
     if (bidAmount <= auction.currentBid) {
       toast({
         title: "Bid too low",
@@ -249,12 +225,19 @@ export default function AuctionPage() {
     }
 
     // In a real app, you would send this to your server
-    setAuction((prev) => ({
-      ...prev,
-      currentBid: bidAmount,
-      bidCount: prev.bidCount + 1,
-      bids: [{ id: `bid${Date.now()}`, user: "You", amount: bidAmount, time: "just now" }, ...prev.bids.slice(0, 4)],
-    }))
+    setAuction((prev) => {
+      if (!prev) return null;
+      
+      return {
+        ...prev,
+        currentBid: bidAmount,
+        bidCount: prev.bidCount + 1,
+        bids: [
+          { id: `bid${Date.now()}`, user: "You", amount: bidAmount, time: "just now" }, 
+          ...prev.bids.slice(0, 4)
+        ],
+      } as Auction;
+    });
 
     toast({
       title: "Bid placed!",
@@ -271,6 +254,26 @@ export default function AuctionPage() {
         <div className="text-center">
           <Clock className="h-10 w-10 mx-auto mb-2 animate-pulse" />
           <p>Loading auction details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !auction) {
+    return (
+      <div className="container mx-auto px-4 py-8 flex justify-center items-center h-[50vh]">
+        <div className="text-center">
+          <div className="mb-4 text-destructive">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" className="mx-auto">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+              <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <h2 className="text-2xl font-semibold mb-2">Auction Not Found</h2>
+          <p className="text-muted-foreground mb-4">{error || "We couldn't find the auction you're looking for."}</p>
+          <Button asChild>
+            <a href="/auctions">Browse Other Auctions</a>
+          </Button>
         </div>
       </div>
     );

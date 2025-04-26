@@ -10,13 +10,24 @@ export async function createClient() {
     {
       cookies: {
         get(name) {
-          return cookieStore.get(name)?.value
+          const cookie = cookieStore.get(name)
+          return cookie?.value
         },
         set(name, value, options) {
-          cookieStore.set({ name, value, ...options })
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch (error) {
+            // Handle errors when running in a middleware or non-cookie environment
+            console.warn('Warning: Could not set cookie', error)
+          }
         },
         remove(name, options) {
-          cookieStore.set({ name, value: '', ...options })
+          try {
+            cookieStore.set({ name, value: '', ...options })
+          } catch (error) {
+            // Handle errors when running in a middleware or non-cookie environment
+            console.warn('Warning: Could not remove cookie', error)
+          }
         },
       },
     }

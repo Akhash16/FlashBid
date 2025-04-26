@@ -14,19 +14,25 @@ export async function updateSession(request) {
     {
       cookies: {
         get(name) {
-          return request.cookies.get(name)?.value
+          const cookie = request.cookies.get(name);
+          return cookie?.value;
         },
         set(name, value, options) {
+          // Set cookie on request
           request.cookies.set({
             name,
             value,
             ...options,
           })
+          
+          // Create a new response
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
           })
+          
+          // Set cookie on response
           response.cookies.set({
             name,
             value,
@@ -34,16 +40,21 @@ export async function updateSession(request) {
           })
         },
         remove(name, options) {
+          // Remove cookie from request
           request.cookies.set({
             name,
             value: '',
             ...options,
           })
+          
+          // Create a new response
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
           })
+          
+          // Remove cookie from response
           response.cookies.set({
             name,
             value: '',
@@ -54,7 +65,12 @@ export async function updateSession(request) {
     }
   )
 
-  await supabase.auth.getUser()
+  try {
+    // Refresh session if available
+    await supabase.auth.getUser()
+  } catch (e) {
+    console.error('Error in middleware session refresh:', e)
+  }
 
   return response
 } 

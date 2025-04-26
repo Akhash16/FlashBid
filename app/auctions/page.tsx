@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { Clock, Filter, Search, SlidersHorizontal } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { toast } from "@/components/ui/use-toast"
 
 // Define auction type
 interface Auction {
@@ -56,8 +57,8 @@ export default function AuctionsPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    // In a real app, you would fetch filtered results from the server
-    console.log("Searching for:", searchQuery)
+    // Apply filters with the search query
+    applyFilters()
   }
 
   // Client-side only time formatting to prevent hydration mismatch
@@ -103,6 +104,8 @@ export default function AuctionsPage() {
     const fetchAuctions = async () => {
       try {
         setLoading(true);
+        
+        // Use the real Supabase API endpoint
         const response = await fetch('/api/auctions');
         
         if (!response.ok) {
@@ -110,6 +113,12 @@ export default function AuctionsPage() {
         }
         
         const data = await response.json();
+        console.log('API Response:', data); // Debug log
+        
+        // Check if we got auctions back
+        if (!data.auctions || !Array.isArray(data.auctions)) {
+          throw new Error('Invalid response from server');
+        }
         
         // Transform the data to match our Auction interface
         const transformedAuctions = data.auctions.map((auction: any) => ({
@@ -122,11 +131,39 @@ export default function AuctionsPage() {
           image: auction.images && auction.images.length > 0 ? auction.images[0] : auction.image || '/placeholder.svg'
         }));
         
-        setAuctions(transformedAuctions);
+        // Sort the auctions initially based on current sortBy value
+        const sortedAuctions = [...transformedAuctions];
+        
+        switch (sortBy) {
+          case "ending-soon":
+            sortedAuctions.sort((a, b) => a.endTime.getTime() - b.endTime.getTime())
+            break
+          case "newest":
+            sortedAuctions.sort((a, b) => b.endTime.getTime() - a.endTime.getTime())
+            break
+          case "price-low":
+            sortedAuctions.sort((a, b) => (a.currentBid || a.startingPrice) - (b.currentBid || b.startingPrice))
+            break
+          case "price-high":
+            sortedAuctions.sort((a, b) => (b.currentBid || b.startingPrice) - (a.currentBid || a.startingPrice))
+            break
+          case "bids":
+            sortedAuctions.sort((a, b) => (b.bidCount || 0) - (a.bidCount || 0))
+            break
+        }
+        
+        setAuctions(sortedAuctions);
         setError(null);
       } catch (err) {
         console.error('Error fetching auctions:', err);
-        setError('Failed to load auctions. Please try again later.');
+        setError(err instanceof Error ? err.message : 'Failed to load auctions');
+        toast({
+          title: "Error",
+          description: "Could not load auction data.",
+          variant: "destructive",
+        });
+        // Show empty auctions list
+        setAuctions([]);
       } finally {
         setLoading(false);
       }
@@ -159,6 +196,7 @@ export default function AuctionsPage() {
         params.append('minPrice', priceRange[0].toString());
         params.append('maxPrice', priceRange[1].toString());
         
+        // Use the real Supabase API endpoint
         const response = await fetch(`/api/auctions?${params.toString()}`);
         
         if (!response.ok) {
@@ -166,6 +204,11 @@ export default function AuctionsPage() {
         }
         
         const data = await response.json();
+        
+        // Check if we got auctions back
+        if (!data.auctions || !Array.isArray(data.auctions)) {
+          throw new Error('Invalid response from server');
+        }
         
         // Transform the data to match our Auction interface
         const transformedAuctions = data.auctions.map((auction: any) => ({
@@ -178,11 +221,38 @@ export default function AuctionsPage() {
           image: auction.images && auction.images.length > 0 ? auction.images[0] : auction.image || '/placeholder.svg'
         }));
         
-        setAuctions(transformedAuctions);
+        // Sort the auctions after applying filters based on current sortBy value
+        const sortedAuctions = [...transformedAuctions];
+        
+        switch (sortBy) {
+          case "ending-soon":
+            sortedAuctions.sort((a, b) => a.endTime.getTime() - b.endTime.getTime())
+            break
+          case "newest":
+            sortedAuctions.sort((a, b) => b.endTime.getTime() - a.endTime.getTime())
+            break
+          case "price-low":
+            sortedAuctions.sort((a, b) => (a.currentBid || a.startingPrice) - (b.currentBid || b.startingPrice))
+            break
+          case "price-high":
+            sortedAuctions.sort((a, b) => (b.currentBid || b.startingPrice) - (a.currentBid || a.startingPrice))
+            break
+          case "bids":
+            sortedAuctions.sort((a, b) => (b.bidCount || 0) - (a.bidCount || 0))
+            break
+        }
+        
+        setAuctions(sortedAuctions);
         setError(null);
       } catch (err) {
         console.error('Error fetching filtered auctions:', err);
-        setError('Failed to apply filters. Please try again later.');
+        setError(err instanceof Error ? err.message : 'Failed to apply filters');
+        toast({
+          title: "Filter error",
+          description: "Could not apply filters.",
+          variant: "destructive",
+        });
+        // Keep current auctions
       } finally {
         setLoading(false);
       }
@@ -191,31 +261,45 @@ export default function AuctionsPage() {
     fetchFilteredAuctions();
   }
 
+  // Update sorting when sortBy changes
   useEffect(() => {
-    if (auctions.length === 0) return;
+    if (!auctions || auctions.length === 0) return;
     
-    const sortedAuctions = [...auctions]
-
-    switch (sortBy) {
-      case "ending-soon":
-        sortedAuctions.sort((a, b) => a.endTime.getTime() - b.endTime.getTime())
-        break
-      case "newest":
-        sortedAuctions.sort((a, b) => b.endTime.getTime() - a.endTime.getTime())
-        break
-      case "price-low":
-        sortedAuctions.sort((a, b) => (a.currentBid || 0) - (b.currentBid || 0))
-        break
-      case "price-high":
-        sortedAuctions.sort((a, b) => (b.currentBid || 0) - (a.currentBid || 0))
-        break
-      case "bids":
-        sortedAuctions.sort((a, b) => (b.bidCount || 0) - (a.bidCount || 0))
-        break
+    // Track if this is a sort update to avoid infinite loops
+    const wasSortUpdate = sessionStorage.getItem('wasSortUpdate') === 'true';
+    if (wasSortUpdate) {
+      sessionStorage.removeItem('wasSortUpdate');
+      return;
     }
-
-    setAuctions(sortedAuctions)
-  }, [sortBy, auctions.length])
+    
+    try {
+      const sortedAuctions = [...auctions];
+      
+      switch (sortBy) {
+        case "ending-soon":
+          sortedAuctions.sort((a, b) => a.endTime.getTime() - b.endTime.getTime())
+          break
+        case "newest":
+          sortedAuctions.sort((a, b) => b.endTime.getTime() - a.endTime.getTime())
+          break
+        case "price-low":
+          sortedAuctions.sort((a, b) => (a.currentBid || a.startingPrice) - (b.currentBid || b.startingPrice))
+          break
+        case "price-high":
+          sortedAuctions.sort((a, b) => (b.currentBid || b.startingPrice) - (a.currentBid || a.startingPrice))
+          break
+        case "bids":
+          sortedAuctions.sort((a, b) => (b.bidCount || 0) - (a.bidCount || 0))
+          break
+      }
+      
+      // Mark that this update was from sorting
+      sessionStorage.setItem('wasSortUpdate', 'true');
+      setAuctions(sortedAuctions);
+    } catch (error) {
+      console.error('Error sorting auctions:', error);
+    }
+  }, [sortBy, auctions]);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -226,8 +310,8 @@ export default function AuctionsPage() {
         </div>
 
         <div className="w-full md:w-auto flex gap-2">
-          <form onSubmit={handleSearch} className="flex-1 md:w-[300px]">
-            <div className="relative">
+          <form onSubmit={handleSearch} className="flex-1 md:w-[300px] flex">
+            <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
@@ -237,6 +321,9 @@ export default function AuctionsPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            <Button type="submit" size="sm" className="ml-2">
+              Search
+            </Button>
           </form>
 
           <Sheet>
@@ -396,7 +483,7 @@ export default function AuctionsPage() {
                   setSelectedConditions([])
                   setPriceRange([0, 1000])
                   setSearchQuery("")
-                  setAuctions(mockAuctions)
+                  window.location.reload()
                 }}
               >
                 Reset
@@ -448,9 +535,41 @@ export default function AuctionsPage() {
           ) : auctions.length === 0 ? (
             <div className="col-span-full text-center py-12">
               <p>No auctions found matching your criteria.</p>
-              <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
-                Reset Filters
-              </Button>
+              
+              <div className="flex gap-3 justify-center mt-4">
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Reset Filters
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      // Call the reset-db endpoint to refresh the database connection
+                      const response = await fetch('/api/reset-db');
+                      const data = await response.json();
+                      toast({
+                        title: "Database connection reset",
+                        description: data.message,
+                        variant: data.status === 'error' ? "destructive" : "default",
+                      });
+                      // Reload the page after resetting
+                      setTimeout(() => window.location.reload(), 1000);
+                    } catch (err) {
+                      console.error('Debug error:', err);
+                      toast({
+                        title: "Error",
+                        description: err instanceof Error ? err.message : String(err),
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                >
+                  Reset Database Connection
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -487,7 +606,11 @@ export default function AuctionsPage() {
                   </CardContent>
                   <CardFooter className="p-4 pt-0">
                     <Button asChild className="w-full">
-                      <Link href={`/auctions/${auction.id}`}>View Auction</Link>
+                      {auction.id ? (
+                        <Link href={`/auctions/${auction.id}`}>View Auction</Link>
+                      ) : (
+                        <span>View Auction</span>
+                      )}
                     </Button>
                   </CardFooter>
                 </Card>

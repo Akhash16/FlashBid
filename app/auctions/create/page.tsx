@@ -478,7 +478,7 @@ export default function CreateAuctionPage() {
         endTime.setDate(endTime.getDate() + 7);
       }
 
-      // Format the data for the API using snake_case as expected by the server
+      // Format the data for the API using snake_case as expected by the database
       const auctionData = {
         title,
         description,
@@ -489,24 +489,21 @@ export default function CreateAuctionPage() {
         end_time: endTime.toISOString(),
         images: uploadedImageUrls,
         shipping_cost: shippingCost ? parseFloat(shippingCost) : 0,
-        shipping_locations: shippingLocations || "domestic"
-        // No need to provide user_id - it will be derived from the authenticated session
+        shipping_locations: shippingLocations || "domestic",
+        status: 'active',
+        start_time: new Date().toISOString(),
+        user_id: userId // Explicitly include the user ID
       };
 
-      // Make the API request
-      const response = await fetch('/api/auctions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(auctionData),
-      });
+      // Use Supabase client directly instead of fetch
+      const { data, error } = await supabase
+        .from('auctions')
+        .insert(auctionData)
+        .select()
+        .single();
 
-      // Parse the response
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to create auction');
+      if (error) {
+        throw new Error(error.message || 'Failed to create auction');
       }
 
       toast({
@@ -515,8 +512,8 @@ export default function CreateAuctionPage() {
       });
       
       // Redirect to the auction page
-      if (result.auction && result.auction.id) {
-        router.push(`/auctions/${result.auction.id}`);
+      if (data && data.id) {
+        router.push(`/auctions/${data.id}`);
       } else {
         router.push('/auctions'); // Fallback to auctions list
       }
@@ -533,316 +530,350 @@ export default function CreateAuctionPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Create a New Auction</h1>
+    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 py-12">
+      <div className="container px-4 mx-auto max-w-4xl">
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold tracking-tight mb-2">Create Your Auction</h1>
+          <p className="text-muted-foreground max-w-2xl mx-auto">
+            Fill in the details below to list your item for auction. Quality listings with good photos sell faster!
+          </p>
+        </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Basic Information</CardTitle>
-                <CardDescription>Provide the basic details about your item.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <Card className="overflow-hidden border-none shadow-lg">
+            <div className="h-2 bg-gradient-to-r from-primary to-primary-foreground/20"></div>
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
+                <span className="bg-primary/10 w-8 h-8 rounded-full flex items-center justify-center mr-2 text-primary">1</span>
+                Basic Information
+              </CardTitle>
+              <CardDescription>Provide the basic details about your item.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="title">Title</Label>
+                <Input 
+                  id="title" 
+                  placeholder="e.g. Vintage Watch Collection" 
+                  required 
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="transition-all focus-visible:ring-primary"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Describe your item in detail. Include condition, history, and any other relevant information."
+                  className="min-h-[120px] transition-all focus-visible:ring-primary"
+                  required
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input 
-                    id="title" 
-                    placeholder="e.g. Vintage Watch Collection" 
-                    required 
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Describe your item in detail. Include condition, history, and any other relevant information."
-                    className="min-h-[120px]"
-                    required
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="category">Category</Label>
-                    <Select required value={category} onValueChange={setCategory}>
-                      <SelectTrigger id="category">
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="collectibles">Collectibles</SelectItem>
-                        <SelectItem value="electronics">Electronics</SelectItem>
-                        <SelectItem value="fashion">Fashion</SelectItem>
-                        <SelectItem value="home">Home & Garden</SelectItem>
-                        <SelectItem value="art">Art</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="condition">Condition</Label>
-                    <Select required value={condition} onValueChange={setCondition}>
-                      <SelectTrigger id="condition">
-                        <SelectValue placeholder="Select condition" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="new">New</SelectItem>
-                        <SelectItem value="like-new">Like New</SelectItem>
-                        <SelectItem value="excellent">Excellent</SelectItem>
-                        <SelectItem value="good">Good</SelectItem>
-                        <SelectItem value="fair">Fair</SelectItem>
-                        <SelectItem value="poor">Poor</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Pricing</CardTitle>
-                <CardDescription>Set your starting and reserve prices.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="startingPrice">Starting Price ($)</Label>
-                    <Input 
-                      id="startingPrice" 
-                      type="number" 
-                      placeholder="0.00" 
-                      required 
-                      min="0.01" 
-                      step="0.01"
-                      value={startingPrice}
-                      onChange={(e) => setStartingPrice(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="reservePrice">Reserve Price ($) (Optional)</Label>
-                    <Input 
-                      id="reservePrice" 
-                      type="number" 
-                      placeholder="0.00" 
-                      min="0.01" 
-                      step="0.01"
-                      value={reservePrice}
-                      onChange={(e) => setReservePrice(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">Minimum price for the item to sell. Hidden from bidders.</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Duration</CardTitle>
-                <CardDescription>Choose when your auction will end.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label>End Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !endDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={endDate}
-                          onSelect={setEndDate}
-                          initialFocus
-                          disabled={(date) => date < new Date()}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label htmlFor="hourValue">Hour</Label>
-                      <Select value={hourValue} onValueChange={setHourValue}>
-                        <SelectTrigger id="hourValue">
-                          <SelectValue placeholder="Hour" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: 24 }, (_, i) => (
-                            <SelectItem key={i} value={i.toString()}>
-                              {i.toString().padStart(2, "0")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="minuteValue">Minute</Label>
-                      <Select value={minuteValue} onValueChange={setMinuteValue}>
-                        <SelectTrigger id="minuteValue">
-                          <SelectValue placeholder="Min" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[0, 15, 30, 45].map((min) => (
-                            <SelectItem key={min} value={min.toString()}>
-                              {min.toString().padStart(2, "0")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <Label>Or set duration in days</Label>
-                  <Select value={duration} onValueChange={setDuration}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select duration" />
+                  <Label htmlFor="category">Category</Label>
+                  <Select required value={category} onValueChange={setCategory}>
+                    <SelectTrigger id="category" className="transition-all focus-visible:ring-primary">
+                      <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">1 day</SelectItem>
-                      <SelectItem value="3">3 days</SelectItem>
-                      <SelectItem value="5">5 days</SelectItem>
-                      <SelectItem value="7">7 days</SelectItem>
-                      <SelectItem value="10">10 days</SelectItem>
-                      <SelectItem value="14">14 days</SelectItem>
-                      <SelectItem value="30">30 days</SelectItem>
+                      <SelectItem value="collectibles">Collectibles</SelectItem>
+                      <SelectItem value="electronics">Electronics</SelectItem>
+                      <SelectItem value="fashion">Fashion</SelectItem>
+                      <SelectItem value="home">Home & Garden</SelectItem>
+                      <SelectItem value="art">Art</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Images</CardTitle>
-                <CardDescription>Upload images of your item (maximum 5 images).</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                    {imageUrls.map((image, index) => (
-                      <div 
-                        key={index} 
-                        className="aspect-square bg-muted rounded-md overflow-hidden relative flex items-center justify-center"
+                <div className="grid gap-2">
+                  <Label htmlFor="condition">Condition</Label>
+                  <Select required value={condition} onValueChange={setCondition}>
+                    <SelectTrigger id="condition" className="transition-all focus-visible:ring-primary">
+                      <SelectValue placeholder="Select condition" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="like-new">Like New</SelectItem>
+                      <SelectItem value="excellent">Excellent</SelectItem>
+                      <SelectItem value="good">Good</SelectItem>
+                      <SelectItem value="fair">Fair</SelectItem>
+                      <SelectItem value="poor">Poor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-none shadow-lg">
+            <div className="h-2 bg-gradient-to-r from-yellow-500 to-amber-300"></div>
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
+                <span className="bg-yellow-500/10 w-8 h-8 rounded-full flex items-center justify-center mr-2 text-yellow-600">2</span>
+                Pricing
+              </CardTitle>
+              <CardDescription>Set your starting and reserve prices.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="startingPrice">Starting Price ($)</Label>
+                  <Input 
+                    id="startingPrice" 
+                    type="number" 
+                    placeholder="0.00" 
+                    required 
+                    min="0.01" 
+                    step="0.01"
+                    value={startingPrice}
+                    onChange={(e) => setStartingPrice(e.target.value)}
+                    className="transition-all focus-visible:ring-yellow-500"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="reservePrice">Reserve Price ($) (Optional)</Label>
+                  <Input 
+                    id="reservePrice" 
+                    type="number" 
+                    placeholder="0.00" 
+                    min="0.01" 
+                    step="0.01"
+                    value={reservePrice}
+                    onChange={(e) => setReservePrice(e.target.value)}
+                    className="transition-all focus-visible:ring-yellow-500"
+                  />
+                  <p className="text-xs text-muted-foreground">Minimum price for the item to sell. Hidden from bidders.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-none shadow-lg">
+            <div className="h-2 bg-gradient-to-r from-blue-500 to-cyan-400"></div>
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
+                <span className="bg-blue-500/10 w-8 h-8 rounded-full flex items-center justify-center mr-2 text-blue-600">3</span>
+                Duration
+              </CardTitle>
+              <CardDescription>Choose when your auction will end.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>End Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full justify-start text-left font-normal transition-all focus-visible:ring-blue-500",
+                          !endDate && "text-muted-foreground"
+                        )}
                       >
-                        <Image 
-                          src={image} 
-                          alt={`Product image ${index + 1}`} 
-                          fill
-                          className="object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(index)}
-                          className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 hover:bg-black/90"
-                          aria-label="Remove image"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                    
-                    {imageUrls.length < 5 && (
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={endDate}
+                        onSelect={setEndDate}
+                        initialFocus
+                        disabled={(date) => date < new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="hourValue">Hour</Label>
+                    <Select value={hourValue} onValueChange={setHourValue}>
+                      <SelectTrigger id="hourValue" className="transition-all focus-visible:ring-blue-500">
+                        <SelectValue placeholder="Hour" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <SelectItem key={i} value={i.toString()}>
+                            {i.toString().padStart(2, "0")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="minuteValue">Minute</Label>
+                    <Select value={minuteValue} onValueChange={setMinuteValue}>
+                      <SelectTrigger id="minuteValue" className="transition-all focus-visible:ring-blue-500">
+                        <SelectValue placeholder="Min" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[0, 15, 30, 45].map((min) => (
+                          <SelectItem key={min} value={min.toString()}>
+                            {min.toString().padStart(2, "0")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Or set duration in days</Label>
+                <Select value={duration} onValueChange={setDuration}>
+                  <SelectTrigger className="transition-all focus-visible:ring-blue-500">
+                    <SelectValue placeholder="Select duration" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 day</SelectItem>
+                    <SelectItem value="3">3 days</SelectItem>
+                    <SelectItem value="5">5 days</SelectItem>
+                    <SelectItem value="7">7 days</SelectItem>
+                    <SelectItem value="10">10 days</SelectItem>
+                    <SelectItem value="14">14 days</SelectItem>
+                    <SelectItem value="30">30 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-none shadow-lg">
+            <div className="h-2 bg-gradient-to-r from-purple-500 to-violet-400"></div>
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
+                <span className="bg-purple-500/10 w-8 h-8 rounded-full flex items-center justify-center mr-2 text-purple-600">4</span>
+                Images
+              </CardTitle>
+              <CardDescription>Upload images of your item (maximum 5 images).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                  {imageUrls.map((image, index) => (
+                    <div 
+                      key={index} 
+                      className="aspect-square bg-muted rounded-md overflow-hidden relative flex items-center justify-center group shadow-sm"
+                    >
+                      <Image 
+                        src={image} 
+                        alt={`Product image ${index + 1}`} 
+                        fill
+                        className="object-cover transition-all group-hover:scale-105"
+                      />
                       <button
                         type="button"
-                        className="aspect-square bg-muted rounded-md flex flex-col items-center justify-center gap-1 border-2 border-dashed"
-                        onClick={handleImageUploadClick}
-                        disabled={imageUploading}
+                        onClick={() => removeImage(index)}
+                        className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 hover:bg-black/90"
+                        aria-label="Remove image"
                       >
-                        {imageUploading ? (
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        ) : (
-                          <>
-                            <Upload className="h-6 w-6 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">Add Image</span>
-                          </>
-                        )}
+                        <X className="h-4 w-4" />
                       </button>
-                    )}
-                    
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept="image/*"
-                      multiple
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
+                    </div>
+                  ))}
+                  
+                  {imageUrls.length < 5 && (
+                    <button
+                      type="button"
+                      className="aspect-square bg-muted/40 rounded-md flex flex-col items-center justify-center gap-1 border-2 border-dashed transition-all hover:bg-muted/60"
+                      onClick={handleImageUploadClick}
+                      disabled={imageUploading}
+                    >
+                      {imageUploading ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+                      ) : (
+                        <>
+                          <ImagePlus className="h-6 w-6 text-purple-500" />
+                          <span className="text-xs text-muted-foreground font-medium">Add Image</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                  
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </div>
+                <div className="bg-muted/30 p-3 rounded-md text-sm text-muted-foreground">
+                  <p className="flex items-center">
+                    <Upload className="h-4 w-4 mr-2" />
                     Images help your item sell faster. Add up to 5 high-quality images.
                   </p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Shipping</CardTitle>
-                <CardDescription>Set shipping details for your item.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="shippingCost">Shipping Cost ($)</Label>
-                  <Input 
-                    id="shippingCost" 
-                    type="number" 
-                    placeholder="0.00" 
-                    min="0" 
-                    step="0.01"
-                    value={shippingCost}
-                    onChange={(e) => setShippingCost(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">Enter 0 for free shipping</p>
-                </div>
+          <Card className="overflow-hidden border-none shadow-lg">
+            <div className="h-2 bg-gradient-to-r from-green-500 to-emerald-400"></div>
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
+                <span className="bg-green-500/10 w-8 h-8 rounded-full flex items-center justify-center mr-2 text-green-600">5</span>
+                Shipping
+              </CardTitle>
+              <CardDescription>Set shipping details for your item.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="shippingCost">Shipping Cost ($)</Label>
+                <Input 
+                  id="shippingCost" 
+                  type="number" 
+                  placeholder="0.00" 
+                  min="0" 
+                  step="0.01"
+                  value={shippingCost}
+                  onChange={(e) => setShippingCost(e.target.value)}
+                  className="transition-all focus-visible:ring-green-500"
+                />
+                <p className="text-xs text-muted-foreground">Enter 0 for free shipping</p>
+              </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="shippingLocations">Shipping To</Label>
-                  <Select value={shippingLocations} onValueChange={setShippingLocations}>
-                    <SelectTrigger id="shippingLocations">
-                      <SelectValue placeholder="Select locations" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="domestic">Domestic Only</SelectItem>
-                      <SelectItem value="international">International</SelectItem>
-                      <SelectItem value="pickup">Local Pickup Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <div className="flex justify-end mt-6">
-              <Button type="submit" disabled={isSubmitting || imageUploading} className="min-w-[150px]">
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create Auction"
-                )}
-              </Button>
-            </div>
+              <div className="grid gap-2">
+                <Label htmlFor="shippingLocations">Shipping To</Label>
+                <Select value={shippingLocations} onValueChange={setShippingLocations}>
+                  <SelectTrigger id="shippingLocations" className="transition-all focus-visible:ring-green-500">
+                    <SelectValue placeholder="Select locations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="domestic">Domestic Only</SelectItem>
+                    <SelectItem value="international">International</SelectItem>
+                    <SelectItem value="pickup">Local Pickup Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <div className="flex justify-center mt-10">
+            <Button 
+              type="submit" 
+              disabled={isSubmitting || imageUploading} 
+              className="min-w-[200px] py-6 text-lg font-medium bg-gradient-to-r from-primary to-purple-600 hover:from-primary/95 hover:to-purple-600/95 shadow-lg transition-all"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Auction"
+              )}
+            </Button>
           </div>
         </form>
       </div>

@@ -1,39 +1,30 @@
 import { NextResponse } from "next/server"
-import { createClient } from '@/utils/supabase/server'
+import { createClient as createBrowserClient } from '@supabase/supabase-js'
 
-// Mock database - Kept for fallback only, but will prefer Supabase data
-const auctions = [
-  {
-    id: "1",
-    title: "Vintage Watch Collection",
-    description: "A collection of rare vintage watches from the 1950s.",
-    currentBid: 1250,
-    startingPrice: 1000,
-    bidCount: 8,
-    endTime: new Date(Date.now() + 10000000),
-    seller: {
-      id: "seller1",
-      name: "John Collector",
-      rating: 4.8,
-    },
-    category: "Collectibles",
-    condition: "Excellent",
-    createdAt: new Date(Date.now() - 86400000),
-  },
-  // More auctions would be here
-]
+// Create a Supabase client
+const createSupabaseClient = () => {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  )
+}
 
 export async function GET(request: Request) {
+  // Store URL and searchParams 
+  const url = new URL(request.url);
+  const searchParams = url.searchParams;
+  
   try {
-    const supabase = await createClient()
-    
     // Get query parameters
-    const { searchParams } = new URL(request.url)
     const query = searchParams.get("query")
     const category = searchParams.get("category")
+    const condition = searchParams.get("condition")
     const minPrice = searchParams.get("minPrice")
     const maxPrice = searchParams.get("maxPrice")
     const id = searchParams.get("id")
+    
+    // Create Supabase client
+    const supabase = createSupabaseClient();
     
     // Start building the query
     let supabaseQuery = supabase.from('auctions').select('*')
@@ -49,7 +40,31 @@ export async function GET(request: Request) {
     }
     
     if (category) {
-      supabaseQuery = supabaseQuery.eq('category', category)
+      // If category is comma-separated, handle multiple categories
+      if (category.includes(',')) {
+        const categories = category.split(',');
+        // Create an OR clause for multiple categories with case-insensitive matching
+        const categoryFilters = categories.map(cat => `category.ilike.%${cat}%`);
+        const orClause = categoryFilters.join(',');
+        supabaseQuery = supabaseQuery.or(orClause);
+      } else {
+        // Use ilike for case-insensitive comparison
+        supabaseQuery = supabaseQuery.ilike('category', `%${category}%`);
+      }
+    }
+    
+    if (condition) {
+      // If condition is comma-separated, handle multiple conditions
+      if (condition.includes(',')) {
+        const conditions = condition.split(',');
+        // Create an OR clause for multiple conditions with case-insensitive matching
+        const conditionFilters = conditions.map(cond => `condition.ilike.%${cond}%`);
+        const orClause = conditionFilters.join(',');
+        supabaseQuery = supabaseQuery.or(orClause);
+      } else {
+        // Use ilike for case-insensitive comparison
+        supabaseQuery = supabaseQuery.ilike('condition', `%${condition}%`);
+      }
     }
     
     if (minPrice) {
@@ -60,19 +75,15 @@ export async function GET(request: Request) {
       supabaseQuery = supabaseQuery.lte('starting_price', parseFloat(maxPrice))
     }
     
+    // Log for debugging
+    console.log('Applying filters:', { query, category, condition, minPrice, maxPrice, id });
+  
     // Execute the query
-    const { data, error } = await supabaseQuery
+    const { data, error } = await supabaseQuery;
     
     if (error) {
-      console.error('Supabase query error:', error)
-      // Fallback to mock data if Supabase query fails
-      if (id) {
-        return NextResponse.json({ 
-          auctions: auctions.filter(auction => auction.id === id || auction.id.toString() === id),
-          source: 'mock'
-        })
-      }
-      return NextResponse.json({ auctions: auctions, source: 'mock' })
+      console.error('Supabase query error:', error);
+      throw error;
     }
     
     // Transform data to match expected format
@@ -96,25 +107,27 @@ export async function GET(request: Request) {
         name: "Seller", // This would be fetched from users table in a real implementation
         rating: 5.0,
       }
-    }))
+    }));
     
-    return NextResponse.json({ auctions: formattedAuctions, source: 'supabase' })
+    return NextResponse.json({ 
+      auctions: formattedAuctions, 
+      source: 'supabase' 
+    });
+    
   } catch (error) {
-    console.error('Server error:', error)
-    // Fallback to mock data in case of error
-    if (searchParams.get("id")) {
-      return NextResponse.json({ 
-        auctions: auctions.filter(auction => auction.id === searchParams.get("id")),
-        source: 'mock'
-      })
-    }
-    return NextResponse.json({ auctions: auctions, source: 'mock' })
+    console.error('Server error:', error);
+    
+    return NextResponse.json({ 
+      status: 'error',
+      message: 'Failed to fetch auctions',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createSupabaseClient();
     
     // Check authentication
     const { data: { user } } = await supabase.auth.getUser()
