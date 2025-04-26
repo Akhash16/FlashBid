@@ -181,22 +181,26 @@ export default function AuctionPage() {
 
     // Simulate receiving a new bid
     const bidInterval = setInterval(() => {
-      if (Math.random() > 0.7) {
+      if (Math.random() > 0.7 && auction) {
         const newBid = auction.currentBid + Math.floor(Math.random() * 50) + 10
-        setAuction((prev) => ({
-          ...prev,
-          currentBid: newBid,
-          bidCount: prev.bidCount + 1,
-          bids: [
-            {
-              id: `bid${Date.now()}`,
-              user: ["Alex", "Taylor", "Jordan", "Morgan"][Math.floor(Math.random() * 4)],
-              amount: newBid,
-              time: "just now",
-            },
-            ...prev.bids.slice(0, 4),
-          ],
-        }))
+        setAuction((prev) => {
+          if (!prev) return null;
+          
+          return {
+            ...prev,
+            currentBid: newBid,
+            bidCount: prev.bidCount + 1,
+            bids: [
+              {
+                id: `bid${Date.now()}`,
+                user: ["Alex", "Taylor", "Jordan", "Morgan"][Math.floor(Math.random() * 4)],
+                amount: newBid,
+                time: "just now",
+              },
+              ...prev.bids.slice(0, 4),
+            ],
+          };
+        });
 
         toast({
           title: "New bid received!",
@@ -210,7 +214,7 @@ export default function AuctionPage() {
       clearInterval(bidInterval)
       // socket.disconnect()
     }
-  }, [])
+  }, [auction, toast])
 
   const handleBid = () => {
     if (!auction) return;

@@ -35,8 +35,18 @@ export default function NavMenu() {
   }, [supabase.auth])
 
   const handleSignOut = async () => {
-    await fetch('/auth/signout', { method: 'POST' })
-    router.refresh()
+    try {
+      // First try the server route
+      await fetch('/auth/signout', { method: 'POST' })
+      // Also sign out on the client side
+      await supabase.auth.signOut()
+      router.refresh()
+    } catch (error) {
+      console.error('Error signing out:', error)
+      // Fallback to client-side only
+      await supabase.auth.signOut()
+      router.refresh()
+    }
   }
 
   // Helper to determine if a link is active

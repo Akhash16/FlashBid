@@ -23,9 +23,7 @@ export default function RootLayout({ children }) {
           
           <div className="container mx-auto px-4 pb-16 md:pb-0">
             <Breadcrumb className="py-4" />
-            <PageTransition>
-              <main>{children}</main>
-            </PageTransition>
+            <main>{children}</main>
           </div>
           
           {/* Mobile navigation bar - only shows on mobile */}
