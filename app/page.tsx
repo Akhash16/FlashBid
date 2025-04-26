@@ -71,7 +71,7 @@ export default function Home() {
             <div className="flex flex-col justify-center space-y-4">
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl lg:text-6xl/none">
-                  <span className="inline bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Flash</span>Bid
+                  <span className="inline bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">FlashBid</span>
                 </h1>
                 <p className="text-xl text-gray-300 md:text-2xl/relaxed lg:text-3xl/relaxed xl:text-4xl/relaxed">
                   The Next Generation Auction Platform
@@ -123,9 +123,13 @@ export default function Home() {
                       <div className="px-3 py-1 bg-blue-500/10 rounded-full text-blue-400 text-sm font-medium">Ending soon</div>
                     </div>
                     <div className="my-4 rounded-xl bg-gray-800/50 overflow-hidden relative h-48">
-                      <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-                        Image placeholder
-                      </div>
+                      <Image
+                        src="https://picsum.photos/id/26/600/400"
+                        alt="Vintage Collector's Watch"
+                        fill
+                        className="object-cover"
+                        priority
+                      />
                     </div>
                     <div className="flex justify-between items-center">
                       <div>
@@ -289,6 +293,12 @@ export default function Home() {
               Array(3).fill(0).map((_, i) => (
                 <Card key={i} className="overflow-hidden border border-gray-800 bg-gray-900 shadow-lg">
                   <div className="aspect-[4/3] bg-gray-800 relative">
+                    <Image
+                      src={`https://picsum.photos/seed/featured${i}/600/450`}
+                      alt={`Vintage Collection #${i+1}`}
+                      fill
+                      className="object-cover"
+                    />
                     <div className="absolute bottom-0 right-0 bg-blue-500/70 text-white px-3 py-1 text-sm font-medium rounded-tl-lg backdrop-blur-sm">
                       Ends soon
                     </div>
@@ -340,7 +350,14 @@ export default function Home() {
             <Card className="bg-gray-900 border border-gray-800 shadow-lg">
               <CardHeader>
                 <div className="flex items-center gap-4">
-                  <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center font-semibold text-xl text-blue-300">J</div>
+                  <div className="h-10 w-10 rounded-full overflow-hidden relative">
+                    <Image 
+                      src="https://picsum.photos/seed/james/100/100" 
+                      alt="James Wilson" 
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
                   <div>
                     <CardTitle className="text-base text-white">James Wilson</CardTitle>
                     <CardDescription className="text-gray-400">Collector</CardDescription>
@@ -361,7 +378,14 @@ export default function Home() {
             <Card className="bg-gray-900 border border-gray-800 shadow-lg">
               <CardHeader>
                 <div className="flex items-center gap-4">
-                  <div className="h-10 w-10 rounded-full bg-purple-500/10 flex items-center justify-center font-semibold text-xl text-purple-300">S</div>
+                  <div className="h-10 w-10 rounded-full overflow-hidden relative">
+                    <Image 
+                      src="https://picsum.photos/seed/sarah/100/100" 
+                      alt="Sarah Johnson" 
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
                   <div>
                     <CardTitle className="text-base text-white">Sarah Johnson</CardTitle>
                     <CardDescription className="text-gray-400">Antique Dealer</CardDescription>
@@ -382,7 +406,14 @@ export default function Home() {
             <Card className="bg-gray-900 border border-gray-800 shadow-lg">
               <CardHeader>
                 <div className="flex items-center gap-4">
-                  <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center font-semibold text-xl text-blue-300">M</div>
+                  <div className="h-10 w-10 rounded-full overflow-hidden relative">
+                    <Image 
+                      src="https://picsum.photos/seed/michael/100/100" 
+                      alt="Michael Chen" 
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
                   <div>
                     <CardTitle className="text-base text-white">Michael Chen</CardTitle>
                     <CardDescription className="text-gray-400">Tech Enthusiast</CardDescription>

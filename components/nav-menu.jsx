@@ -62,8 +62,8 @@ export default function NavMenu() {
     <header className="sticky top-0 z-40 w-full border-b border-gray-800 bg-[#1a202c]/95 backdrop-blur supports-[backdrop-filter]:bg-[#1a202c]/80">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="text-xl font-bold flex items-center gap-2">
-          <img src="/flashbid_logo.png" alt="FlashBid Logo" className="h-9 w-auto" />
-          {/* <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">FlashBid</span> */}
+          <img src="/main_logo.png" alt="FlashBid Logo" className="h-9 w-auto" />
+          <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">FlashBid</span>
         </Link>
 
         {/* Desktop navigation only - mobile uses bottom nav instead */}

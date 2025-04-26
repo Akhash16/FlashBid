@@ -94,7 +94,7 @@ export default function AuctionPage() {
             // Use images array from Supabase or default placeholder
             images: fetchedAuction.images && fetchedAuction.images.length > 0 
               ? fetchedAuction.images 
-              : ["/placeholder.svg?height=400&width=600"],
+              : [`https://picsum.photos/seed/${id}/600/400`],
             watchers: fetchedAuction.watchers || Math.floor(Math.random() * 30) + 5,
             // Use existing bids or empty array
             bids: fetchedAuction.bids || [],
@@ -386,7 +386,7 @@ export default function AuctionPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src="/placeholder.svg" />
+                        <AvatarImage src={`https://picsum.photos/seed/${auction.seller.id}/100/100`} />
                         <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div>
@@ -520,7 +520,7 @@ export default function AuctionPage() {
               <TabsContent value="seller" className="p-4">
                 <div className="flex items-center gap-3 mb-4">
                   <Avatar className="h-12 w-12">
-                    <AvatarImage src="/placeholder.svg" />
+                    <AvatarImage src={`https://picsum.photos/seed/${auction.seller.id}/100/100`} />
                     <AvatarFallback>{auction.seller.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div>

@@ -577,7 +577,7 @@ export default function AuctionsPage() {
                 <Card key={auction.id} className="overflow-hidden">
                   <div className="aspect-video relative">
                     <img
-                      src={auction.image || "/placeholder.svg"}
+                      src={auction.image || `https://picsum.photos/seed/${auction.id}/600/400`}
                       alt={auction.title}
                       className="w-full h-full object-cover"
                     />
