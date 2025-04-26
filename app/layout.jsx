@@ -5,6 +5,7 @@ import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { ThemeProvider } from "@/components/theme-provider"
 import { PageTransition } from "@/components/ui/page-transition"
 import { BottomNav } from "@/components/ui/bottom-nav"
+import { Analytics } from "@vercel/analytics/react"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -29,6 +30,7 @@ export default function RootLayout({ children }) {
           {/* Mobile navigation bar - only shows on mobile */}
           <BottomNav />
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   )
